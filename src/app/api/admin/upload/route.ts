@@ -76,7 +76,8 @@ export async function POST(req: NextRequest) {
         else if (["docx", "doc", "xlsx", "pptx"].includes(fileType)) {
             try {
                 // Use officeparser to extract text from Word, Excel, PowerPoint
-                rawText = await officeParser.parseBufferAsync(buffer)
+                const ast = await officeParser.parseOffice(buffer)
+                rawText = ast.toText()
             } catch (err: any) {
                 console.error("Office Parser Error:", err)
                 return NextResponse.json({ error: `Failed to parse Office document: ${err.message}` }, { status: 400 })
