@@ -8,12 +8,16 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, Link as LinkIcon, Upload, Search, Plus, Trash2, Video, Loader2, Image as ImageIcon, BarChart3 } from "lucide-react"
+import { FileText, Link as LinkIcon, Upload, Search, Plus, Trash2, Video, Loader2, Image as ImageIcon, BarChart3, ExternalLink, Eye } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 type Document = {
     id: string;
     title: string;
     type: string;
+    content: string;
+    sourceUrl: string;
     status: string;
     createdAt: string;
 }
@@ -271,16 +275,56 @@ export default function AdminKnowledgeBase() {
                                     ) : (
                                         documents.map((doc) => (
                                             <TableRow key={doc.id}>
-                                                <TableCell className="font-medium flex items-center gap-2">
-                                                    {doc.type === "pdf" && <FileText className="w-4 h-4 text-red-500" />}
-                                                    {doc.type === "url" && <LinkIcon className="w-4 h-4 text-blue-500" />}
-                                                    {doc.type === "video" && <Video className="w-4 h-4 text-red-600" />}
-                                                    {doc.type === "txt" && <FileText className="w-4 h-4 text-slate-500" />}
-                                                    {(doc.type === "docx" || doc.type === "doc") && <FileText className="w-4 h-4 text-blue-600" />}
-                                                    {(doc.type === "xlsx" || doc.type === "xls") && <BarChart3 className="w-4 h-4 text-emerald-600" />}
-                                                    {(doc.type === "pptx" || doc.type === "ppt") && <ImageIcon className="w-4 h-4 text-orange-600" />}
-                                                    {(doc.type === "png" || doc.type === "jpg" || doc.type === "jpeg") && <ImageIcon className="w-4 h-4 text-purple-500" />}
-                                                    {doc.title}
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        {doc.type === "url" ? (
+                                                            <a
+                                                                href={doc.sourceUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center gap-2 text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                                                            >
+                                                                <LinkIcon className="w-4 h-4" />
+                                                                {doc.title}
+                                                                <ExternalLink className="w-3 h-3 ml-1 opacity-50" />
+                                                            </a>
+                                                        ) : (
+                                                            <Dialog>
+                                                                <DialogTrigger asChild>
+                                                                    <button className="flex items-center gap-2 text-slate-900 dark:text-white hover:text-yellow-600 dark:hover:text-yellow-500 transition-colors text-left group">
+                                                                        {doc.type === "pdf" && <FileText className="w-4 h-4 text-red-500" />}
+                                                                        {doc.type === "video" && <Video className="w-4 h-4 text-red-600" />}
+                                                                        {doc.type === "txt" && <FileText className="w-4 h-4 text-slate-500" />}
+                                                                        {(doc.type === "docx" || doc.type === "doc") && <FileText className="w-4 h-4 text-blue-600" />}
+                                                                        {(doc.type === "xlsx" || doc.type === "xls") && <BarChart3 className="w-4 h-4 text-emerald-600" />}
+                                                                        {(doc.type === "pptx" || doc.type === "ppt") && <ImageIcon className="w-4 h-4 text-orange-600" />}
+                                                                        {(doc.type === "png" || doc.type === "jpg" || doc.type === "jpeg") && <ImageIcon className="w-4 h-4 text-purple-500" />}
+                                                                        <span className="group-hover:underline">{doc.title}</span>
+                                                                        <Eye className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                    </button>
+                                                                </DialogTrigger>
+                                                                <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+                                                                    <DialogHeader>
+                                                                        <div className="flex items-center gap-2 mb-2">
+                                                                            <Badge variant="outline" className="uppercase text-[10px]">{doc.type}</Badge>
+                                                                            <Badge variant="outline" className="text-[10px] text-slate-500">ID: {doc.id}</Badge>
+                                                                        </div>
+                                                                        <DialogTitle>{doc.title}</DialogTitle>
+                                                                        <DialogDescription>
+                                                                            Extracted content used by the AI to learn.
+                                                                        </DialogDescription>
+                                                                    </DialogHeader>
+                                                                    <div className="flex-1 overflow-hidden mt-4">
+                                                                        <ScrollArea className="h-full max-h-[50vh] w-full rounded-md border p-4 bg-slate-50 dark:bg-slate-900">
+                                                                            <div className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                                                {doc.content || "No content extracted for this document."}
+                                                                            </div>
+                                                                        </ScrollArea>
+                                                                    </div>
+                                                                </DialogContent>
+                                                            </Dialog>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge variant="outline" className="uppercase text-xs">{doc.type}</Badge>
