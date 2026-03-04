@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, Link as LinkIcon, Upload, Search, Plus, Trash2, Video, Loader2, Image as ImageIcon } from "lucide-react"
+import { FileText, Link as LinkIcon, Upload, Search, Plus, Trash2, Video, Loader2, Image as ImageIcon, BarChart3 } from "lucide-react"
 
 type Document = {
     id: string;
@@ -154,7 +154,7 @@ export default function AdminKnowledgeBase() {
                     <CardContent>
                         <input
                             type="file"
-                            accept=".pdf, .txt, .png, .jpg, .jpeg"
+                            accept=".pdf, .txt, .png, .jpg, .jpeg, .doc, .docx, .xls, .xlsx, .ppt, .pptx"
                             ref={fileInputRef}
                             className="hidden"
                             onChange={handleFileUpload}
@@ -173,7 +173,7 @@ export default function AdminKnowledgeBase() {
                                 ) : (
                                     <>
                                         <FileText className="h-8 w-8 text-yellow-500" />
-                                        <span className="text-sm font-medium">Click to upload (PDF, TXT, PNG, JPG)</span>
+                                        <span className="text-sm font-medium">Click to upload (PDF, Office, Docs, Image)</span>
                                     </>
                                 )}
                             </div>
@@ -276,6 +276,9 @@ export default function AdminKnowledgeBase() {
                                                     {doc.type === "url" && <LinkIcon className="w-4 h-4 text-blue-500" />}
                                                     {doc.type === "video" && <Video className="w-4 h-4 text-red-600" />}
                                                     {doc.type === "txt" && <FileText className="w-4 h-4 text-slate-500" />}
+                                                    {(doc.type === "docx" || doc.type === "doc") && <FileText className="w-4 h-4 text-blue-600" />}
+                                                    {(doc.type === "xlsx" || doc.type === "xls") && <BarChart3 className="w-4 h-4 text-emerald-600" />}
+                                                    {(doc.type === "pptx" || doc.type === "ppt") && <ImageIcon className="w-4 h-4 text-orange-600" />}
                                                     {(doc.type === "png" || doc.type === "jpg" || doc.type === "jpeg") && <ImageIcon className="w-4 h-4 text-purple-500" />}
                                                     {doc.title}
                                                 </TableCell>

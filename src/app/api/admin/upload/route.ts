@@ -6,6 +6,8 @@ import { Pinecone } from "@pinecone-database/pinecone"
 import { prisma } from "@/lib/prisma"
 import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf"
 import OpenAI from "openai"
+// @ts-ignore
+import * as officeParser from "officeparser"
 
 const pinecone = new Pinecone()
 const openai = new OpenAI()
@@ -27,6 +29,10 @@ export async function POST(req: NextRequest) {
         if (fileName.endsWith(".pdf")) fileType = "pdf"
         else if (fileName.endsWith(".png")) fileType = "png"
         else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) fileType = "jpg"
+        else if (fileName.endsWith(".docx")) fileType = "docx"
+        else if (fileName.endsWith(".doc")) fileType = "doc"
+        else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) fileType = "xlsx"
+        else if (fileName.endsWith(".pptx") || fileName.endsWith(".ppt")) fileType = "pptx"
 
         const title = file.name
 
@@ -65,6 +71,15 @@ export async function POST(req: NextRequest) {
                 rawText = response.choices[0].message.content || ""
             } catch (err: any) {
                 return NextResponse.json({ error: `Image AI scan failed: ${err.message}` }, { status: 400 })
+            }
+        }
+        else if (["docx", "doc", "xlsx", "pptx"].includes(fileType)) {
+            try {
+                // Use officeparser to extract text from Word, Excel, PowerPoint
+                rawText = await officeParser.parseBufferAsync(buffer)
+            } catch (err: any) {
+                console.error("Office Parser Error:", err)
+                return NextResponse.json({ error: `Failed to parse Office document: ${err.message}` }, { status: 400 })
             }
         }
         else {
