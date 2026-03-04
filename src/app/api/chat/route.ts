@@ -33,19 +33,39 @@ export async function POST(req: NextRequest) {
                 .join(" ")
         }
 
-        const relevantDocs = await vectorStore.similaritySearch(queryContent, 3)
+        console.log("Chat API: Starting search for query:", queryContent)
+
+        let relevantDocs = []
+        try {
+            relevantDocs = await vectorStore.similaritySearch(queryContent, 3)
+            console.log("Chat API: Vector search found", relevantDocs.length, "docs")
+        } catch (err) {
+            console.error("Chat API: Vector Search Error:", err)
+            // Continue without context if vector search fails? Or fail?
+            // Let's fail for now to be safe and debug
+            throw new Error(`Pinecone/Vector Search Error: ${err instanceof Error ? err.message : String(err)}`)
+        }
 
         // Format context
         let context = relevantDocs.map((doc: any) => doc.pageContent).join("\n\n")
 
         // 3. Fetch Dynamic Settings
-        const settings = await prisma.setting.findMany({
-            where: {
-                key: { in: ["systemPrompt"] }
-            }
-        })
-        const customPrompt = settings.find(s => s.key === "systemPrompt")?.value ||
-            "You are a helpful assistant for Hidayah Centre Foundation."
+        console.log("Chat API: Fetching settings from Prisma...")
+        let customPrompt = "You are a helpful assistant for Hidayah Centre Foundation."
+        try {
+            const settings = await (prisma as any).setting.findMany({
+                where: {
+                    key: { in: ["systemPrompt"] }
+                }
+            })
+            const promptSetting = settings.find((s: any) => s.key === "systemPrompt")
+            customPrompt = promptSetting?.value || customPrompt
+            console.log("Chat API: Settings fetched successfully")
+        } catch (err) {
+            console.error("Chat API: Prisma/DB Error:", err)
+            // Database might be blocked or credentials wrong
+            throw new Error(`Database Connection Error: ${err instanceof Error ? err.message : String(err)}`)
+        }
 
         // Construct the prompt with context
         const finalPrompt = `${customPrompt}

@@ -22,12 +22,19 @@ export function ChatWidget() {
     ])
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const inputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
-        // Auto-scroll when a new message block begins, not upon every stream chunk.
-        // This prevents the user from being locked at the bottom while streaming.
+        // Auto-scroll logic
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
     }, [messages.length, isLoading])
+
+    // Auto-focus input when loading finishes or widget opens
+    useEffect(() => {
+        if (!isLoading && isOpen) {
+            inputRef.current?.focus()
+        }
+    }, [isLoading, isOpen])
 
     const processStream = async (res: Response, newMessages: Message[]) => {
         if (!res.body) return;
@@ -66,6 +73,9 @@ export function ChatWidget() {
         setInput("")
         setIsLoading(true)
 
+        // Immediate focus back to input (though it will be disabled until loaded)
+        setTimeout(() => inputRef.current?.focus(), 0)
+
         try {
             const res = await fetch("/api/chat", {
                 method: "POST",
@@ -73,20 +83,31 @@ export function ChatWidget() {
                 body: JSON.stringify({ messages: newMessages })
             })
 
-            if (!res.ok) throw new Error("Network request failed")
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || `Server responded with ${res.status}`);
+            }
 
             await processStream(res, newMessages)
 
-        } catch (error) {
-            console.error(error)
-            setMessages((prev) => [...prev, { id: Date.now().toString(), role: "assistant", content: "Sorry, I am having trouble connecting to the server. Please check the API configuration." }])
+        } catch (error: any) {
+            console.error("Chat Error:", error)
+            const errorMsg = error.message || "An error occurred connecting to the assistant."
+            setMessages((prev) => [...prev, {
+                id: Date.now().toString(),
+                role: "assistant",
+                content: `⚠️ Error: ${errorMsg}. Please ensure your API keys and Database are correctly configured.`
+            }])
         } finally {
             setIsLoading(false)
+            // Focus again after loading finishes
+            setTimeout(() => inputRef.current?.focus(), 100)
         }
     }
 
     const handleQuickReply = (text: string) => {
         setInput(text)
+        inputRef.current?.focus()
     }
 
     const handleClearChat = () => {
@@ -95,6 +116,7 @@ export function ChatWidget() {
                 { id: "1", role: "assistant", content: "Assalamu'alaikum! I am the Hidayah Centre Foundation Assistant. How can I help you today?" }
             ])
             setInput("")
+            inputRef.current?.focus()
         }
     }
 
@@ -175,6 +197,7 @@ export function ChatWidget() {
                                 <Paperclip className="w-5 h-5" />
                             </Button>
                             <Input
+                                ref={inputRef}
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 placeholder="Type your message..."
