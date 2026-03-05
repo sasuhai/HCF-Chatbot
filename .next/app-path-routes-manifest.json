@@ -1,0 +1,17 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/admin/analytics/page": "/admin/analytics",
+  "/admin/page": "/admin",
+  "/admin/settings/page": "/admin/settings",
+  "/api/admin/documents/[id]/route": "/api/admin/documents/[id]",
+  "/api/admin/documents/route": "/api/admin/documents",
+  "/api/admin/faq/auto/route": "/api/admin/faq/auto",
+  "/api/admin/ingest/route": "/api/admin/ingest",
+  "/api/admin/settings/route": "/api/admin/settings",
+  "/api/admin/stats/route": "/api/admin/stats",
+  "/api/admin/upload/route": "/api/admin/upload",
+  "/api/chat/route": "/api/chat",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/"
+}

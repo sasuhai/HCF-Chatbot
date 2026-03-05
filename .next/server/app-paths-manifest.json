@@ -1,0 +1,17 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/analytics/page": "app/admin/analytics/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/settings/page": "app/admin/settings/page.js",
+  "/api/admin/documents/[id]/route": "app/api/admin/documents/[id]/route.js",
+  "/api/admin/documents/route": "app/api/admin/documents/route.js",
+  "/api/admin/faq/auto/route": "app/api/admin/faq/auto/route.js",
+  "/api/admin/ingest/route": "app/api/admin/ingest/route.js",
+  "/api/admin/settings/route": "app/api/admin/settings/route.js",
+  "/api/admin/stats/route": "app/api/admin/stats/route.js",
+  "/api/admin/upload/route": "app/api/admin/upload/route.js",
+  "/api/chat/route": "app/api/chat/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js"
+}

@@ -1,0 +1,10 @@
+var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/admin/ingest/route.js")
+R.c("server/chunks/[root-of-the-server]__3fd36bce._.js")
+R.c("server/chunks/[root-of-the-server]__8893af36._.js")
+R.c("server/chunks/node_modules_next_1402a1da._.js")
+R.c("server/chunks/[root-of-the-server]__958f116b._.js")
+R.c("server/chunks/[root-of-the-server]__70e056bd._.js")
+R.c("server/chunks/node_modules_@pinecone-database_pinecone_dist_3afa70a5._.js")
+R.c("server/chunks/_next-internal_server_app_api_admin_ingest_route_actions_513b6432.js")
+R.m(91080)
+module.exports=R.m(91080).exports
