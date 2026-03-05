@@ -303,22 +303,22 @@ export default function AdminKnowledgeBase() {
                                                                         <Eye className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                                     </button>
                                                                 </DialogTrigger>
-                                                                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-6">
-                                                                    <DialogHeader>
-                                                                        <div className="flex items-center gap-2 mb-2">
+                                                                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                                                                    <DialogHeader className="p-6 pb-4 border-b shrink-0">
+                                                                        <div className="flex items-center gap-2 mb-1">
                                                                             <Badge variant="outline" className="uppercase text-[10px]">{doc.type}</Badge>
                                                                             <Badge variant="outline" className="text-[10px] text-slate-500">ID: {doc.id}</Badge>
                                                                         </div>
-                                                                        <DialogTitle className="text-xl">{doc.title}</DialogTitle>
+                                                                        <DialogTitle className="text-xl font-bold">{doc.title}</DialogTitle>
                                                                         <DialogDescription>
                                                                             Extracted content used by the AI to learn.
                                                                         </DialogDescription>
                                                                     </DialogHeader>
-                                                                    <ScrollArea className="mt-6 flex-1 h-[60vh] w-full rounded-md border bg-slate-50 dark:bg-slate-900">
-                                                                        <div className="p-6 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                                    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6">
+                                                                        <div className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                                                                             {doc.content || "No content extracted for this document."}
                                                                         </div>
-                                                                    </ScrollArea>
+                                                                    </div>
                                                                 </DialogContent>
                                                             </Dialog>
                                                         )}

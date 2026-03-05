@@ -62,12 +62,24 @@ export async function GET(req: Request) {
             .slice(0, 20)
             .map(([text, value]) => ({ text, value }))
 
-        // 3. Platform & Source distribution
-        const platforms = await prisma.conversation.groupBy({
-            by: ['platform', 'source'],
-            _count: { id: true },
-            take: 50
+        // 3. Platform & Source distribution (Manual aggregation to avoid Prisma groupBy text issues)
+        const allConvos = await (prisma.conversation as any).findMany({
+            select: { platform: true, source: true },
+            take: 1000 // Sample size
         })
+
+        const sourceMap: Record<string, any> = {}
+        allConvos.forEach((c: any) => {
+            const key = `${c.platform}-${c.source || 'Unknown'}`
+            if (!sourceMap[key]) {
+                sourceMap[key] = { platform: c.platform, source: c.source || "Unknown", count: 0 }
+            }
+            sourceMap[key].count++
+        })
+
+        const sources = Object.values(sourceMap)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 50)
 
         return NextResponse.json({
             conversations,
@@ -78,11 +90,7 @@ export async function GET(req: Request) {
             },
             analytics: {
                 topWords,
-                sources: platforms.map(p => ({
-                    platform: p.platform,
-                    source: p.source || "Unknown",
-                    count: p._count.id
-                }))
+                sources
             }
         })
     } catch (error) {

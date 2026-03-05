@@ -29,9 +29,11 @@ export function ChatWidget() {
         quickReplies: ["How to donate?", "Learn about Islam"],
     })
     const [messages, setMessages] = useState<Message[]>([])
+    const [attachments, setAttachments] = useState<File[]>([])
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Initialize session and fetch settings
     useEffect(() => {
@@ -136,6 +138,20 @@ export function ChatWidget() {
         // Immediate focus back to input (though it will be disabled until loaded)
         setTimeout(() => inputRef.current?.focus(), 0)
 
+        const fileData = await Promise.all(attachments.map(async (file) => {
+            return new Promise<{ name: string, type: string, data: string }>((resolve) => {
+                const reader = new FileReader()
+                reader.onloadend = () => {
+                    resolve({
+                        name: file.name,
+                        type: file.type,
+                        data: (reader.result as string).split(',')[1] // Base64 portion only
+                    })
+                }
+                reader.readAsDataURL(file)
+            })
+        }))
+
         try {
             const res = await fetch("/api/chat", {
                 method: "POST",
@@ -143,9 +159,13 @@ export function ChatWidget() {
                 body: JSON.stringify({
                     messages: newMessages,
                     sessionId,
-                    conversationId
+                    conversationId,
+                    attachments: fileData
                 })
             })
+
+            // Clear attachments after sending
+            setAttachments([])
 
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({}));
@@ -205,6 +225,17 @@ export function ChatWidget() {
             console.error("Failed to copy:", err)
             toast.error("Could not copy chat history.")
         })
+    }
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files)
+            setAttachments(prev => [...prev, ...newFiles])
+        }
+    }
+
+    const removeAttachment = (index: number) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index))
     }
 
     return (
@@ -297,9 +328,51 @@ export function ChatWidget() {
                             ))}
                         </div>
 
+                        {/* File Previews */}
+                        {attachments.length > 0 && (
+                            <div className="px-4 py-2 bg-white dark:bg-slate-950 border-t flex gap-2 overflow-x-auto">
+                                {attachments.map((file, idx) => (
+                                    <div key={idx} className="relative group shrink-0">
+                                        <div className="w-16 h-16 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-1 overflow-hidden">
+                                            {file.type.startsWith('image/') ? (
+                                                <img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt="preview"
+                                                    className="w-full h-full object-cover rounded"
+                                                />
+                                            ) : (
+                                                <div className="text-[10px] text-center font-medium truncate px-1">
+                                                    {file.name.split('.').pop()?.toUpperCase()}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => removeAttachment(idx)}
+                                            className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         {/* Input */}
                         <form id="hcf-chat-form" onSubmit={onSubmit} className="p-3 bg-white dark:bg-slate-950 border-t flex items-center gap-2 shrink-0">
-                            <Button type="button" variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600 rounded-full shrink-0">
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                className="hidden"
+                                multiple
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-slate-400 hover:text-slate-600 rounded-full shrink-0"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
                                 <Paperclip className="w-5 h-5" />
                             </Button>
                             <Input

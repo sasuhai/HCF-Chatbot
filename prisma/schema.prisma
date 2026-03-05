@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
 }
 
@@ -12,31 +12,33 @@ model Document {
   id        String   @id @default(cuid())
   title     String
   sourceUrl String?  @db.Text
-  type      String   // 'pdf', 'url', 'video', 'docx'
+  type      String
   content   String   @db.LongText
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  status    String   @default("PENDING")
 }
 
 model Conversation {
   id        String    @id @default(cuid())
-  userId    String?   // Optional: For logged-in users / leads
-  sessionId String?   // For anonymous website visitors
-  platform  String    // 'WEB', 'FACEBOOK'
-  source    String?   @db.Text // Track specific website URL or FB page name
+  userId    String?
+  sessionId String?
+  platform  String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  source    String?   @db.Text
   messages  Message[]
 }
 
 model Message {
   id             String       @id @default(cuid())
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String       // 'user', 'assistant', 'system'
+  role           String
   content        String       @db.LongText
   createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId], map: "Message_conversationId_fkey")
 }
 
 model Lead {
@@ -44,7 +46,7 @@ model Lead {
   name      String?
   email     String?
   phone     String?
-  source    String   // e.g. 'chat_widget', 'facebook'
+  source    String
   createdAt DateTime @default(now())
 }
 
