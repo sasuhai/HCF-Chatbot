@@ -2,10 +2,14 @@
 
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { MessageCircle, X, Send, Paperclip, RotateCcw } from "lucide-react"
+import { MessageCircle, X, Send, Paperclip, RotateCcw, Copy, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { toast } from "sonner"
+import { v4 as uuidv4 } from 'uuid'
 
 type Message = {
     id: string;
@@ -17,12 +21,68 @@ export function ChatWidget() {
     const [isOpen, setIsOpen] = useState(false)
     const [input, setInput] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [messages, setMessages] = useState<Message[]>([
-        { id: "1", role: "assistant", content: "Assalamu'alaikum! I am the Hidayah Centre Foundation Assistant. How can I help you today?" }
-    ])
+    const [sessionId, setSessionId] = useState<string | null>(null)
+    const [conversationId, setConversationId] = useState<string | null>(null)
+    const [config, setConfig] = useState({
+        botName: "HCF Assistant",
+        welcomeMessage: "Assalamu'alaikum! I am the Hidayah Centre Foundation Assistant. How can I help you today?",
+        quickReplies: ["How to donate?", "Learn about Islam"],
+    })
+    const [messages, setMessages] = useState<Message[]>([])
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+
+    // Initialize session and fetch settings
+    useEffect(() => {
+        let sId = localStorage.getItem('hcf_chat_session_id')
+        if (!sId) {
+            sId = uuidv4()
+            localStorage.setItem('hcf_chat_session_id', sId)
+        }
+        setSessionId(sId)
+
+        const fetchConfig = async () => {
+            try {
+                const res = await fetch("/api/admin/settings")
+                const data = await res.json()
+                if (data.settings) {
+                    let qReplies = []
+                    const strategy = data.settings.faqSource || "MANUAL"
+
+                    if (strategy === "AUTO") {
+                        try {
+                            const autoRes = await fetch("/api/admin/faq/auto")
+                            const autoData = await autoRes.json()
+                            qReplies = autoData.questions || ["How to donate?", "Learn about Islam"]
+                        } catch (e) {
+                            qReplies = ["How to donate?", "Learn about Islam"]
+                        }
+                    } else {
+                        qReplies = data.settings.quickReplies
+                            ? data.settings.quickReplies.split(',').map((s: string) => s.trim())
+                            : ["How to donate?", "Learn about Islam"]
+                    }
+
+                    setConfig({
+                        botName: data.settings.botName || "HCF Assistant",
+                        welcomeMessage: data.settings.welcomeMessage || "Assalamu'alaikum! I am the Hidayah Centre Foundation Assistant. How can I help you today?",
+                        quickReplies: qReplies
+                    })
+
+                    setMessages([{
+                        id: "welcome",
+                        role: "assistant",
+                        content: data.settings.welcomeMessage || "Assalamu'alaikum! I am the Hidayah Centre Foundation Assistant. How can I help you today?"
+                    }])
+                }
+            } catch (error) {
+                console.error("Failed to fetch widget config:", error)
+                setMessages([{ id: "welcome", role: "assistant", content: config.welcomeMessage }])
+            }
+        }
+        fetchConfig()
+    }, [])
 
     useEffect(() => {
         // Auto-scroll logic
@@ -80,12 +140,22 @@ export function ChatWidget() {
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messages: newMessages })
+                body: JSON.stringify({
+                    messages: newMessages,
+                    sessionId,
+                    conversationId
+                })
             })
 
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({}));
                 throw new Error(errorData.error || `Server responded with ${res.status}`);
+            }
+
+            // Capture the conversationId for future tracking in this session
+            const convId = res.headers.get('x-conversation-id')
+            if (convId && !conversationId) {
+                setConversationId(convId)
             }
 
             await processStream(res, newMessages)
@@ -107,17 +177,34 @@ export function ChatWidget() {
 
     const handleQuickReply = (text: string) => {
         setInput(text)
-        inputRef.current?.focus()
+        setTimeout(() => {
+            const currentForm = document.getElementById('hcf-chat-form') as HTMLFormElement
+            if (currentForm) currentForm.requestSubmit()
+        }, 10)
     }
 
     const handleClearChat = () => {
         if (confirm("Are you sure you want to clear the chat history?")) {
             setMessages([
-                { id: "1", role: "assistant", content: "Assalamu'alaikum! I am the Hidayah Centre Foundation Assistant. How can I help you today?" }
+                { id: "welcome", role: "assistant", content: config.welcomeMessage }
             ])
             setInput("")
+            setConversationId(null) // Start fresh in DB
             inputRef.current?.focus()
         }
+    }
+
+    const handleCopyChat = () => {
+        const chatText = messages
+            .map(m => `${m.role === 'user' ? 'Client' : 'HCF Assistant'}: ${m.content}`)
+            .join('\n\n')
+
+        navigator.clipboard.writeText(chatText).then(() => {
+            toast.success("Chat history copied to clipboard!")
+        }).catch(err => {
+            console.error("Failed to copy:", err)
+            toast.error("Could not copy chat history.")
+        })
     }
 
     return (
@@ -134,15 +221,22 @@ export function ChatWidget() {
                         {/* Header */}
                         <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 p-4 text-white flex justify-between items-center shadow-md z-10 shrink-0">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm border border-white/30">
-                                    <span className="font-bold text-lg">HCF</span>
+                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-inner overflow-hidden border border-white/30">
+                                    <img
+                                        src="https://hidayahcentre.org.my/wp-content/uploads/2021/06/logo-web2.png"
+                                        alt="HCF Logo"
+                                        className="w-8 h-auto object-contain"
+                                    />
                                 </div>
                                 <div>
-                                    <h3 className="font-semibold leading-tight">HCF Assistant</h3>
+                                    <h3 className="font-semibold leading-tight">{config.botName}</h3>
                                     <p className="text-xs text-yellow-100 opacity-90">Usually replies instantly</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
+                                <Button onClick={handleCopyChat} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full w-8 h-8" title="Copy Chat">
+                                    <Copy className="w-4 h-4" />
+                                </Button>
                                 <Button onClick={handleClearChat} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full w-8 h-8" title="Clear Chat">
                                     <RotateCcw className="w-4 h-4" />
                                 </Button>
@@ -168,7 +262,11 @@ export function ChatWidget() {
                                                 : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-tl-none"
                                                 }`}
                                         >
-                                            {msg.content}
+                                            <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-900 prose-pre:text-white max-w-none">
+                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                    {msg.content}
+                                                </ReactMarkdown>
+                                            </div>
                                         </div>
                                     </motion.div>
                                 ))}
@@ -187,12 +285,20 @@ export function ChatWidget() {
 
                         {/* Quick Replies */}
                         <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 flex gap-2 overflow-x-auto no-scrollbar border-t border-slate-100 dark:border-slate-800 shrink-0">
-                            <button type="button" onClick={() => handleQuickReply("How to donate?")} className="whitespace-nowrap px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full text-xs font-medium hover:bg-yellow-200 transition-colors">How to donate?</button>
-                            <button type="button" onClick={() => handleQuickReply("Learn about Islam")} className="whitespace-nowrap px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full text-xs font-medium hover:bg-yellow-200 transition-colors">Learn about Islam</button>
+                            {config.quickReplies.map((reply, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => handleQuickReply(reply)}
+                                    className="whitespace-nowrap px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full text-xs font-medium hover:bg-yellow-200 transition-colors"
+                                >
+                                    {reply}
+                                </button>
+                            ))}
                         </div>
 
                         {/* Input */}
-                        <form onSubmit={onSubmit} className="p-3 bg-white dark:bg-slate-950 border-t flex items-center gap-2 shrink-0">
+                        <form id="hcf-chat-form" onSubmit={onSubmit} className="p-3 bg-white dark:bg-slate-950 border-t flex items-center gap-2 shrink-0">
                             <Button type="button" variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600 rounded-full shrink-0">
                                 <Paperclip className="w-5 h-5" />
                             </Button>

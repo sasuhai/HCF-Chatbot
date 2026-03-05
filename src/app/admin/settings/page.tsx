@@ -16,6 +16,8 @@ export default function SettingsPage() {
         botName: "HCF Assistant",
         welcomeMessage: "Assalamu'alaikum! Welcome to Hidayah Centre Foundation. How can I assist you today?",
         systemPrompt: "You are a helpful AI assistant for Hidayah Centre Foundation (HCF). Your goal is to guide people about Islam, provide info about HCF programs, and handle inquiries politely. Use the provided context to answer questions.",
+        quickReplies: "How to donate?, Learn about Islam, Prayer times",
+        faqSource: "MANUAL"
     })
 
     useEffect(() => {
@@ -124,6 +126,56 @@ export default function SettingsPage() {
                                 This hidden prompt is sent with every query. Be specific about the tone (e.g., "gentle," "professional") and restrictions.
                             </p>
                         </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-2">
+                            <MessageCircle className="w-5 h-5 text-emerald-500" />
+                            <CardTitle>Quick Replies & FAQ</CardTitle>
+                        </div>
+                        <CardDescription>Configure the suggestive buttons that appear at the bottom of the chat.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="space-y-3">
+                            <Label>FAQ Strategy</Label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <button
+                                    onClick={() => setSettings({ ...settings, faqSource: "MANUAL" })}
+                                    className={`p-4 border rounded-xl text-left transition-all ${settings.faqSource === "MANUAL" ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10' : 'border-slate-200 hover:border-slate-300'}`}
+                                >
+                                    <p className="font-semibold text-sm">Prepared by Admin</p>
+                                    <p className="text-xs text-slate-500">Show exactly the questions you type below.</p>
+                                </button>
+                                <button
+                                    onClick={() => setSettings({ ...settings, faqSource: "AUTO" })}
+                                    className={`p-4 border rounded-xl text-left transition-all ${settings.faqSource === "AUTO" ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10' : 'border-slate-200 hover:border-slate-300'}`}
+                                >
+                                    <p className="font-semibold text-sm">AI Most Common</p>
+                                    <p className="text-xs text-slate-500">Automatically show questions from chat history.</p>
+                                </button>
+                            </div>
+                        </div>
+
+                        {settings.faqSource === "MANUAL" && (
+                            <div className="space-y-2">
+                                <Label htmlFor="quickReplies">Suggested Questions (Comma separated)</Label>
+                                <Input
+                                    id="quickReplies"
+                                    value={settings.quickReplies}
+                                    onChange={(e) => setSettings({ ...settings, quickReplies: e.target.value })}
+                                    placeholder="How to donate?, What is Islam?, Program schedule"
+                                />
+                                <p className="text-xs text-slate-500">These will appear as tappable bubbles for the user.</p>
+                            </div>
+                        )}
+
+                        {settings.faqSource === "AUTO" && (
+                            <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-dashed text-center">
+                                <p className="text-sm text-slate-500 italic">"AI will analyze recent chat history to suggest the most relevant questions."</p>
+                            </div>
+                        )}
                     </CardContent>
                     <CardFooter className="bg-slate-50/50 dark:bg-slate-900/50 flex justify-between px-6 py-4">
                         <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">

@@ -16,7 +16,9 @@ export async function GET() {
             settings: {
                 botName: settings["botName"] || "HCF Assistant",
                 welcomeMessage: settings["welcomeMessage"] || "Assalamu'alaikum! Welcome to Hidayah Centre Foundation. How can I assist you today?",
-                systemPrompt: settings["systemPrompt"] || "You are a helpful AI assistant for Hidayah Centre Foundation (HCF). Your goal is to guide people about Islam, provide info about HCF programs, and handle inquiries politely. Use the provided context to answer questions."
+                systemPrompt: settings["systemPrompt"] || "You are a helpful AI assistant for Hidayah Centre Foundation (HCF). Your goal is to guide people about Islam, provide info about HCF programs, and handle inquiries politely. Use the provided context to answer questions.",
+                quickReplies: settings["quickReplies"] || "How to donate?, Learn about Islam",
+                faqSource: settings["faqSource"] || "MANUAL"
             }
         })
     } catch (error) {

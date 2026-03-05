@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -23,6 +24,7 @@ model Conversation {
   userId    String?   // Optional: For logged-in users / leads
   sessionId String?   // For anonymous website visitors
   platform  String    // 'WEB', 'FACEBOOK'
+  source    String?   @db.Text // Track specific website URL or FB page name
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   messages  Message[]
