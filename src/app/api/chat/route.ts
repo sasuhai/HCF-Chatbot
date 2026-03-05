@@ -5,7 +5,8 @@ import { PineconeStore } from "@langchain/pinecone"
 import { OpenAIEmbeddings } from "@langchain/openai"
 import { Pinecone } from "@pinecone-database/pinecone"
 import { prisma } from "@/lib/prisma"
-import pdf from "pdf-parse"
+// @ts-ignore
+import pdf from "pdf-parse/lib/pdf-parse.js"
 import officeParser from "officeparser"
 
 // Initialize clients (these will fail if keys are missing)
@@ -13,7 +14,7 @@ const pinecone = new Pinecone()
 
 export async function POST(req: NextRequest) {
     try {
-        const { messages, sessionId, conversationId, attachments }: { messages: ModelMessage[], sessionId: string, conversationId?: string, attachments?: any[] } = await req.json()
+        const { messages, sessionId, conversationId, attachments }: { messages: any[], sessionId: string, conversationId?: string, attachments?: any[] } = await req.json()
 
         // Capture Source (e.g., website URL)
         const host = req.headers.get('host') || "Unknown"
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
                     }
                 } else if (att.type.includes('word') || att.type.includes('officedocument')) {
                     try {
-                        const text = await officeParser.parseOfficeAsync(buffer)
+                        const text = await (officeParser as any).parseOffice(buffer)
                         attachmentText += `\n--- ATTACHED DOCX (${att.name}) ---\n${text}\n`
                     } catch (e) {
                         console.error("Office Parsing Error:", e)
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
         // 1. Identify or Create Conversation
         let currentConvId = conversationId
         if (!currentConvId) {
-            const conv = await (prisma.conversation as any).create({
+            const conv = await prisma.conversation.create({
                 data: {
                     sessionId,
                     platform: "WEB",
