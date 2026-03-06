@@ -14,7 +14,7 @@ const pinecone = new Pinecone()
 
 export async function POST(req: NextRequest) {
     try {
-        const { messages, sessionId, conversationId, attachments }: { messages: any[], sessionId: string, conversationId?: string, attachments?: any[] } = await req.json()
+        const { messages, sessionId, conversationId, attachments, parentId }: { messages: any[], sessionId: string, conversationId?: string, attachments?: any[], parentId?: string } = await req.json()
 
         // Capture Source (e.g., website URL)
         const host = req.headers.get('host') || "Unknown"
@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
                 data: {
                     conversationId: currentConvId as string,
                     role: "user",
-                    content: userQuery + (attachments?.length ? ` [Attached ${attachments.length} files]` : "")
+                    content: userQuery + (attachments?.length ? ` [Attached ${attachments.length} files]` : ""),
+                    parentId: parentId || null
                 }
             })
         }
@@ -119,6 +120,16 @@ export async function POST(req: NextRequest) {
             console.error("Settings Error:", err)
         }
 
+        let parentMessageContent = ""
+        if (parentId) {
+            try {
+                const parent = await prisma.message.findUnique({ where: { id: parentId } })
+                if (parent) parentMessageContent = parent.content
+            } catch (err) {
+                console.error("Parent Message Fetch Error:", err)
+            }
+        }
+
         const finalPrompt = `${customPrompt}
         
 STRICT FORMATTING RULES:
@@ -128,13 +139,14 @@ STRICT FORMATTING RULES:
 4. Use double line breaks between paragraphs.
 5. Answer based on context if possible.
 
+${parentMessageContent ? `\nUSER IS REPLYING TO THIS MESSAGE: "${parentMessageContent}"\n` : ""}
+
 ${attachmentText ? `\n--- ATTACHED CONTENT ---\n${attachmentText}\n--- END ATTACHED CONTENT ---\n` : ""}
 
 CONTEXT:
 ${context}`
 
         // 5. Prepare final messages for LLM
-        // If there are images, we need to restructure the last message
         const finalMessages = [...messages]
         if (imageParts.length > 0) {
             const lastIdx = finalMessages.length - 1
@@ -151,19 +163,25 @@ ${context}`
             }
         }
 
-        // 6. Respond with Stream
+        // 6. Pre-create assistant message to get an ID for front-end feedback
+        const assistantMessage = await prisma.message.create({
+            data: {
+                conversationId: currentConvId!,
+                role: "assistant",
+                content: "" // Will be updated onFinish
+            }
+        })
+
+        // 7. Respond with Stream
         const result = streamText({
             model: openai("gpt-4o-mini"),
             system: finalPrompt,
             messages: finalMessages,
             temperature: 0.2,
             onFinish: async (completion) => {
-                await prisma.message.create({
-                    data: {
-                        conversationId: currentConvId!,
-                        role: "assistant",
-                        content: completion.text
-                    }
+                await prisma.message.update({
+                    where: { id: assistantMessage.id },
+                    data: { content: completion.text }
                 })
             }
         })
@@ -171,6 +189,7 @@ ${context}`
         const response = result.toTextStreamResponse()
         if (currentConvId) {
             response.headers.set('x-conversation-id', currentConvId as string)
+            response.headers.set('x-message-id', assistantMessage.id)
         }
         return response
 

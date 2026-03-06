@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { MessageCircle, X, Send, Paperclip, RotateCcw, Copy, Check } from "lucide-react"
+import { MessageCircle, X, Send, Paperclip, RotateCcw, Copy, Check, ThumbsUp, ThumbsDown, Reply } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -15,6 +15,9 @@ type Message = {
     id: string;
     role: "user" | "assistant" | "system";
     content: string;
+    feedback?: 'like' | 'dislike' | null;
+    parentId?: string | null;
+    parentContent?: string | null;
 }
 
 export function ChatWidget() {
@@ -30,6 +33,7 @@ export function ChatWidget() {
     })
     const [messages, setMessages] = useState<Message[]>([])
     const [attachments, setAttachments] = useState<File[]>([])
+    const [replyingTo, setReplyingTo] = useState<Message | null>(null)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
@@ -98,16 +102,12 @@ export function ChatWidget() {
         }
     }, [isLoading, isOpen])
 
-    const processStream = async (res: Response, newMessages: Message[]) => {
+    const processStream = async (res: Response, newMessages: Message[], assistantId: string) => {
         if (!res.body) return;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
 
         let assistantContent = "";
-        const id = Date.now().toString();
-
-        // Add an empty assistant message to update
-        setMessages((prev) => [...prev, { id, role: "assistant", content: "" }]);
 
         while (true) {
             const { done, value } = await reader.read();
@@ -118,7 +118,7 @@ export function ChatWidget() {
             assistantContent += chunk;
             setMessages((prev) => {
                 const updated = [...prev];
-                const idx = updated.findIndex(m => m.id === id);
+                const idx = updated.findIndex(m => m.id === assistantId);
                 if (idx !== -1) updated[idx].content = assistantContent;
                 return updated;
             });
@@ -129,7 +129,13 @@ export function ChatWidget() {
         if (e) e.preventDefault()
         if (!input.trim() || isLoading) return
 
-        const userMsg: Message = { id: Date.now().toString(), role: "user", content: input }
+        const userMsg: Message = {
+            id: Date.now().toString(),
+            role: "user",
+            content: input,
+            parentId: replyingTo?.id,
+            parentContent: replyingTo?.content
+        }
         const newMessages = [...messages, userMsg]
         setMessages(newMessages)
         setInput("")
@@ -160,25 +166,33 @@ export function ChatWidget() {
                     messages: newMessages,
                     sessionId,
                     conversationId,
-                    attachments: fileData
+                    attachments: fileData,
+                    parentId: replyingTo?.id
                 })
             })
 
-            // Clear attachments after sending
+            // Clear attachments and reply state after sending
             setAttachments([])
+            setReplyingTo(null)
 
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({}));
                 throw new Error(errorData.error || `Server responded with ${res.status}`);
             }
 
-            // Capture the conversationId for future tracking in this session
+            // Capture the conversationId and assistant messageId
             const convId = res.headers.get('x-conversation-id')
+            const msgId = res.headers.get('x-message-id')
+
             if (convId && !conversationId) {
                 setConversationId(convId)
             }
 
-            await processStream(res, newMessages)
+            const tempId = Date.now().toString();
+            // Add an empty assistant message to update
+            setMessages((prev) => [...prev, { id: msgId || tempId, role: "assistant", content: "" }]);
+
+            await processStream(res, newMessages, msgId || tempId)
 
         } catch (error: any) {
             console.error("Chat Error:", error)
@@ -238,6 +252,32 @@ export function ChatWidget() {
         setAttachments(prev => prev.filter((_, i) => i !== index))
     }
 
+    const handleFeedback = async (messageId: string, feedback: 'like' | 'dislike') => {
+        // Optimistic update
+        setMessages(prev => prev.map(m =>
+            m.id === messageId ? { ...m, feedback: m.feedback === feedback ? null : feedback } : m
+        ))
+
+        try {
+            const res = await fetch("/api/chat/feedback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageId, feedback })
+            })
+            if (!res.ok) throw new Error("Failed to send feedback")
+            toast.success("Thank you for your feedback!")
+        } catch (error) {
+            console.error(error)
+            toast.error("Failed to save feedback.")
+            // Rollback if needed, but for simplicity let's just keep the optimistic state
+        }
+    }
+
+    const handleReply = (msg: Message) => {
+        setReplyingTo(msg)
+        inputRef.current?.focus()
+    }
+
     return (
         <div className="fixed bottom-6 right-6 z-50">
             <AnimatePresence>
@@ -287,17 +327,60 @@ export function ChatWidget() {
                                         key={msg.id}
                                         className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                                     >
-                                        <div
-                                            className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.role === "user"
-                                                ? "bg-yellow-500 text-white rounded-tr-none"
-                                                : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-tl-none"
-                                                }`}
-                                        >
-                                            <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-900 prose-pre:text-white max-w-none">
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                    {msg.content}
-                                                </ReactMarkdown>
+                                        <div className="flex flex-col gap-1 max-w-[80%]">
+                                            <div
+                                                className={`rounded-2xl px-4 py-3 text-sm shadow-sm relative group ${msg.role === "user"
+                                                    ? "bg-yellow-500 text-white rounded-tr-none"
+                                                    : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-tl-none"
+                                                    }`}
+                                            >
+                                                {/* Parent message preview if it's a reply */}
+                                                {msg.parentContent && (
+                                                    <div className="mb-2 p-2 bg-black/5 dark:bg-white/5 rounded text-xs border-l-2 border-yellow-400 italic truncate opacity-80">
+                                                        {msg.parentContent}
+                                                    </div>
+                                                )}
+
+                                                <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-900 prose-pre:text-white max-w-none">
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
+
+                                                {/* Actions (Like/Dislike/Reply) */}
+                                                <div className={`absolute -bottom-8 ${msg.role === "user" ? "right-1" : "left-1"} flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 z-20`}>
+                                                    {msg.role === "assistant" && msg.id !== "welcome" && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleFeedback(msg.id, 'like')}
+                                                                className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${msg.feedback === 'like' ? 'text-yellow-600' : 'text-slate-400'}`}
+                                                            >
+                                                                <ThumbsUp className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleFeedback(msg.id, 'dislike')}
+                                                                className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${msg.feedback === 'dislike' ? 'text-yellow-600' : 'text-slate-400'}`}
+                                                            >
+                                                                <ThumbsDown className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleReply(msg)}
+                                                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-400"
+                                                    >
+                                                        <Reply className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </div>
+                                            {/* Show reaction indicators if already liked/disliked and not hovered */}
+                                            {msg.feedback && (
+                                                <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mt-1.5`}>
+                                                    <span className="text-[10px] bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-full px-1.5 py-0.5 shadow-sm flex items-center gap-1 text-slate-500">
+                                                        {msg.feedback === 'like' ? <ThumbsUp className="w-2.5 h-2.5 text-yellow-600" /> : <ThumbsDown className="w-2.5 h-2.5 text-yellow-600" />}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </motion.div>
                                 ))}
@@ -327,6 +410,21 @@ export function ChatWidget() {
                                 </button>
                             ))}
                         </div>
+
+                        {/* Replying To Overlay */}
+                        {replyingTo && (
+                            <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/10 border-t border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                    <Reply className="w-3 h-3 text-yellow-600 shrink-0" />
+                                    <span className="text-[11px] text-yellow-800 dark:text-yellow-600 truncate italic">
+                                        Replying to: {replyingTo.content}
+                                    </span>
+                                </div>
+                                <button onClick={() => setReplyingTo(null)} className="text-yellow-600 hover:text-yellow-700 p-1">
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        )}
 
                         {/* File Previews */}
                         {attachments.length > 0 && (

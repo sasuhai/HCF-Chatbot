@@ -35,10 +35,15 @@ model Message {
   conversationId String
   role           String
   content        String       @db.LongText
+  feedback       String?      // 'like' or 'dislike'
+  parentId       String?      // For replies
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  parent         Message?     @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies        Message[]    @relation("Replies")
 
   @@index([conversationId], map: "Message_conversationId_fkey")
+  @@index([parentId], map: "Message_parentId_fkey")
 }
 
 model Lead {
