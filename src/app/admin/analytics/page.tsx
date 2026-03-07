@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { BarChart, Users, MessageSquare, MousePointer2, TrendingUp, Globe, Facebook, Loader2, Search, Trash2, Calendar, MessageCircle, ChevronRight, MessageCircleMore, Trash, Filter, RefreshCw, X } from "lucide-react"
+import { BarChart, Users, MessageSquare, MousePointer2, TrendingUp, Globe, Facebook, Loader2, Search, Trash2, Calendar, MessageCircle, ChevronRight, MessageCircleMore, Trash, Filter, RefreshCw, X, ThumbsUp, ThumbsDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 export default function AnalyticsPage() {
     const [isLoading, setIsLoading] = useState(true)
@@ -18,6 +20,8 @@ export default function AnalyticsPage() {
         totalChats: 0,
         totalMessages: 0,
         totalLeads: 0,
+        positiveFeedback: 0,
+        negativeFeedback: 0,
         webChats: 0,
         fbChats: 0,
         recentActivity: [] as any[],
@@ -51,6 +55,7 @@ export default function AnalyticsPage() {
     const [search, setSearch] = useState("")
     const [isDeleting, setIsDeleting] = useState<string | null>(null)
     const [purgeDays, setPurgeDays] = useState(30)
+    const [filter, setFilter] = useState("")
 
     const [isRefreshingQuestions, setIsRefreshingQuestions] = useState(false)
     const [leads, setLeads] = useState<any[]>([])
@@ -98,9 +103,9 @@ export default function AnalyticsPage() {
         }
     }
 
-    const fetchConversations = async (page = 1, query = "") => {
+    const fetchConversations = async (page = 1, query = "", activeFilter = filter) => {
         try {
-            const res = await fetch(`/api/admin/conversations?page=${page}&search=${encodeURIComponent(query)}`)
+            const res = await fetch(`/api/admin/conversations?page=${page}&search=${encodeURIComponent(query)}&filter=${activeFilter}`)
             const data = await res.json()
             if (data && data.conversations) {
                 setConvData(data)
@@ -309,6 +314,29 @@ export default function AnalyticsPage() {
                     </div>
 
                     <div className="grid gap-6 md:grid-cols-2">
+                        <Card className="hover:shadow-md transition-shadow border-t-4 border-t-emerald-500">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium text-slate-500">Helpful Responses</CardTitle>
+                                <ThumbsUp className="w-4 h-4 text-emerald-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">{stats.positiveFeedback}</div>
+                                <p className="text-xs text-slate-500 mt-1">Total 'Like' feedback received</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="hover:shadow-md transition-shadow border-t-4 border-t-amber-500">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium text-slate-500">Unhelpful Responses</CardTitle>
+                                <ThumbsDown className="w-4 h-4 text-amber-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">{stats.negativeFeedback}</div>
+                                <p className="text-xs text-slate-500 mt-1">Total 'Dislike' feedback received</p>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
                         <Card>
                             <CardHeader>
                                 <CardTitle>Platform Distribution</CardTitle>
@@ -332,6 +360,9 @@ export default function AnalyticsPage() {
                                         </div>
                                     </div>
                                 ))}
+                                {(!convData?.analytics?.sources || convData.analytics.sources.length === 0) && (
+                                    <p className="text-sm text-slate-500 italic">No platform data available yet.</p>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -513,15 +544,63 @@ export default function AnalyticsPage() {
                                 <CardTitle>Full Chat Logs</CardTitle>
                                 <CardDescription>Search and study actual customer conversations</CardDescription>
                             </div>
-                            <form onSubmit={handleSearch} className="flex items-center gap-2">
-                                <Input
-                                    placeholder="Filter by keyword..."
-                                    className="h-9 w-[200px]"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                />
-                                <Button size="sm" type="submit"><Filter className="w-4 h-4 mr-2" /> Filter</Button>
-                            </form>
+                            <div className="flex items-center gap-4">
+                                <div className="hidden md:flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                                    <Button
+                                        variant={filter === "" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        className="h-7 text-[10px] px-3 shadow-none"
+                                        onClick={() => {
+                                            setFilter("")
+                                            fetchConversations(1, search, "")
+                                        }}
+                                    >
+                                        All
+                                    </Button>
+                                    <Button
+                                        variant={filter === "unanswered" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        className={`h-7 text-[10px] px-3 shadow-none ${filter === "unanswered" ? 'text-rose-600' : 'text-slate-500'}`}
+                                        onClick={() => {
+                                            setFilter("unanswered")
+                                            fetchConversations(1, search, "unanswered")
+                                        }}
+                                    >
+                                        Unanswered
+                                    </Button>
+                                    <Button
+                                        variant={filter === "liked" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        className={`h-7 text-[10px] px-3 shadow-none ${filter === "liked" ? 'text-emerald-600' : 'text-slate-500'}`}
+                                        onClick={() => {
+                                            setFilter("liked")
+                                            fetchConversations(1, search, "liked")
+                                        }}
+                                    >
+                                        Liked
+                                    </Button>
+                                    <Button
+                                        variant={filter === "disliked" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        className={`h-7 text-[10px] px-3 shadow-none ${filter === "disliked" ? 'text-amber-600' : 'text-slate-500'}`}
+                                        onClick={() => {
+                                            setFilter("disliked")
+                                            fetchConversations(1, search, "disliked")
+                                        }}
+                                    >
+                                        Disliked
+                                    </Button>
+                                </div>
+                                <form onSubmit={handleSearch} className="flex items-center gap-2">
+                                    <Input
+                                        placeholder="Filter by keyword..."
+                                        className="h-9 w-[180px]"
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                    />
+                                    <Button size="sm" type="submit"><Filter className="w-4 h-4" /></Button>
+                                </form>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-6">
@@ -551,11 +630,30 @@ export default function AnalyticsPage() {
                                         <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto bg-white dark:bg-slate-950">
                                             {convo.messages.map((m: any) => (
                                                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.role === 'user'
+                                                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm relative ${m.role === 'user'
                                                         ? 'bg-yellow-500 text-white rounded-tr-none'
-                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-700'
+                                                        : m.notAnswered
+                                                            ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900 rounded-tl-none border shadow-sm'
+                                                            : m.feedback === 'like'
+                                                                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900 rounded-tl-none border shadow-sm'
+                                                                : m.feedback === 'dislike'
+                                                                    ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900 rounded-tl-none border shadow-sm'
+                                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-700'
                                                         }`}>
-                                                        <p className="whitespace-pre-wrap">{m.content}</p>
+                                                        <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed max-w-none">
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                {m.content}
+                                                            </ReactMarkdown>
+                                                        </div>
+                                                        {m.feedback && (
+                                                            <div className={`absolute -top-2 -right-2 bg-white dark:bg-slate-800 rounded-full p-1.5 border shadow-md z-10`}>
+                                                                {m.feedback === 'like' ? (
+                                                                    <ThumbsUp className="w-4 h-4 text-emerald-600 fill-emerald-100 dark:fill-emerald-900" />
+                                                                ) : (
+                                                                    <ThumbsDown className="w-4 h-4 text-amber-600 fill-amber-100 dark:fill-amber-900" />
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
@@ -577,12 +675,12 @@ export default function AnalyticsPage() {
                                 <Button
                                     variant="outline"
                                     disabled={(convData?.pagination?.current || 1) <= 1}
-                                    onClick={() => fetchConversations((convData?.pagination?.current || 1) - 1, search)}
+                                    onClick={() => fetchConversations((convData?.pagination?.current || 1) - 1, search, filter)}
                                 >Previous</Button>
                                 <Button
                                     variant="outline"
                                     disabled={(convData?.pagination?.current || 1) >= (convData?.pagination?.pages || 1)}
-                                    onClick={() => fetchConversations((convData?.pagination?.current || 1) + 1, search)}
+                                    onClick={() => fetchConversations((convData?.pagination?.current || 1) + 1, search, filter)}
                                 >Next</Button>
                             </div>
                         </CardFooter>

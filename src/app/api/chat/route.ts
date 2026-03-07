@@ -139,7 +139,7 @@ STRICT FORMATTING RULES:
 2. If giving steps or instructions, ALWAYS use numbered lists (1., 2., 3.).
 3. Use bullet points for features or lists.
 4. Use double line breaks between paragraphs.
-5. Answer based on context if possible.
+5. Answer based on context if possible. If the context does not contain the answer, say exactly: "I'm sorry, I don't have enough information in my knowledge base to answer that yet. Would you like to leave your contact details so we can get back to you?"
 
 ${parentMessageContent ? `\nUSER IS REPLYING TO THIS MESSAGE: "${parentMessageContent}"\n` : ""}
 
@@ -181,18 +181,37 @@ ${context}`
             messages: finalMessages,
             temperature: 0.2,
             onFinish: async (completion) => {
-                // Update message in DB
-                await prisma.message.update({
-                    where: { id: assistantMessage.id },
-                    data: { content: completion.text }
-                })
-                // Log AI Usage Cost
-                await logAiUsage("gpt-4o-mini", completion.usage)
+                try {
+                    // Detect if the AI couldn't answer
+                    const fallbackPhrase = "I'm sorry, I don't have enough information in my knowledge base to answer that yet"
+                    const notAnswered = completion.text.toLowerCase().includes(fallbackPhrase.toLowerCase())
 
-                // Background Lead Extraction from the current exchange
-                // We check both the prompt (last user msg) and context
-                if (currentConvId) {
-                    extractAndSaveLead(userQuery, currentConvId, "WEB").catch(console.error)
+                    // Update message in DB
+                    await prisma.message.update({
+                        where: { id: assistantMessage.id },
+                        data: {
+                            content: completion.text,
+                            notAnswered: notAnswered
+                        }
+                    })
+                    // Log AI Usage Cost
+                    await logAiUsage("gpt-4o-mini", completion.usage)
+
+                    // Background Lead Extraction from the current exchange
+                    if (currentConvId) {
+                        extractAndSaveLead(userQuery, currentConvId, "WEB").catch(err => console.error("Lead Extraction Background Error:", err))
+                    }
+                } catch (err) {
+                    console.error("Chat API onFinish Error (Critical):", err)
+                    // Emergency fallback: at least try to save the content if notAnswered update failed
+                    try {
+                        await (prisma.message.update as any)({
+                            where: { id: assistantMessage.id },
+                            data: { content: completion.text }
+                        })
+                    } catch (innerErr) {
+                        console.error("Chat API Emergency Recovery Failed:", innerErr)
+                    }
                 }
             }
         })

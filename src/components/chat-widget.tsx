@@ -10,6 +10,15 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from "sonner"
 import { v4 as uuidv4 } from 'uuid'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog"
+import { Trash2 } from "lucide-react"
 
 type Message = {
     id: string;
@@ -34,6 +43,7 @@ export function ChatWidget() {
     const [messages, setMessages] = useState<Message[]>([])
     const [attachments, setAttachments] = useState<File[]>([])
     const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+    const [isClearModalOpen, setIsClearModalOpen] = useState(false)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
@@ -218,14 +228,18 @@ export function ChatWidget() {
     }
 
     const handleClearChat = () => {
-        if (confirm("Are you sure you want to clear the chat history?")) {
-            setMessages([
-                { id: "welcome", role: "assistant", content: config.welcomeMessage }
-            ])
-            setInput("")
-            setConversationId(null) // Start fresh in DB
-            inputRef.current?.focus()
-        }
+        setIsClearModalOpen(true)
+    }
+
+    const confirmClear = () => {
+        setMessages([
+            { id: "welcome", role: "assistant", content: config.welcomeMessage }
+        ])
+        setInput("")
+        setConversationId(null) // Start fresh in DB
+        setIsClearModalOpen(false)
+        toast.success("Chat history cleared")
+        setTimeout(() => inputRef.current?.focus(), 100)
     }
 
     const handleCopyChat = () => {
@@ -501,6 +515,36 @@ export function ChatWidget() {
             >
                 {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
             </motion.button>
+
+            {/* Clear Chat Confirmation Modal */}
+            <Dialog open={isClearModalOpen} onOpenChange={setIsClearModalOpen}>
+                <DialogContent className="sm:max-w-[400px] border-yellow-100">
+                    <DialogHeader className="flex flex-col items-center">
+                        <div className="w-12 h-12 bg-rose-50 dark:bg-rose-900/20 rounded-full flex items-center justify-center mb-2">
+                            <Trash2 className="w-6 h-6 text-rose-500" />
+                        </div>
+                        <DialogTitle className="text-xl font-bold">Clear Chat History?</DialogTitle>
+                        <DialogDescription className="text-center">
+                            This will permanently remove your current conversation from this session. This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="sm:justify-center gap-2 mt-4">
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsClearModalOpen(false)}
+                            className="w-full sm:w-auto px-8"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={confirmClear}
+                            className="w-full sm:w-auto px-8 bg-rose-500 hover:bg-rose-600 text-white border-0"
+                        >
+                            Yes, Clear Chat
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
-} 
+}

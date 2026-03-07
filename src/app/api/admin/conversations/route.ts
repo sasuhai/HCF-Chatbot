@@ -6,17 +6,57 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url)
         const search = searchParams.get('search') || ""
         const page = parseInt(searchParams.get('page') || "1")
+        const filter = searchParams.get('filter') || ""
         const limit = 20
         const skip = (page - 1) * limit
 
-        // 1. Fetch Conversations with Search Filter
+        // 1. Fetch Conversations with Search & Filter
         const where: any = {}
+        const conditions: any[] = []
+
         if (search) {
-            where.messages = {
-                some: {
-                    content: { contains: search }
+            conditions.push({
+                messages: {
+                    some: { content: { contains: search } }
                 }
-            }
+            })
+        }
+
+        if (filter === 'unanswered') {
+            conditions.push({
+                messages: {
+                    some: {
+                        role: 'assistant',
+                        notAnswered: true
+                    }
+                }
+            })
+        }
+
+        if (filter === 'liked') {
+            conditions.push({
+                messages: {
+                    some: {
+                        role: 'assistant',
+                        feedback: 'like'
+                    }
+                }
+            })
+        }
+
+        if (filter === 'disliked') {
+            conditions.push({
+                messages: {
+                    some: {
+                        role: 'assistant',
+                        feedback: 'dislike'
+                    }
+                }
+            })
+        }
+
+        if (conditions.length > 0) {
+            where.AND = conditions;
         }
 
         const conversations = await prisma.conversation.findMany({
@@ -33,81 +73,73 @@ export async function GET(req: Request) {
 
         const total = await prisma.conversation.count({ where })
 
-        // 2. Word Frequency Analysis (on a sample of recent user messages)
-        const allUserMsgs = await prisma.message.findMany({
-            where: { role: 'user' },
-            select: { content: true },
-            take: 1000,
-            orderBy: { createdAt: 'desc' }
-        })
-
         // GET USER-DEFINED EXCLUSIONS FROM DATABASE
         const excludedSetting = await prisma.setting.findUnique({
             where: { key: "excluded_keywords" }
         })
         const userExclusions = excludedSetting ? JSON.parse(excludedSetting.value) as string[] : []
 
-        // COMPREHENSIVE SMART FILTER (English & Malay Stopwords)
-        const stopWords = new Set([
-            'the', 'and', 'a', 'to', 'of', 'in', 'i', 'is', 'that', 'it', 'on', 'you', 'this', 'for', 'but', 'with', 're', 'how', 'me', 'my', 'can', 'what', 'are', 'was', 'were', 'will', 'did', 'about', 'from', 'have', 'has', 'had', 'been', 'with', 'dont', 'does', 'just', 'more',
-            'saya', 'yang', 'ini', 'di', 'ada', 'itu', 'ke', 'untuk', 'dan', 'sebagai', 'boleh', 'tidak', 'kenapa', 'bila', 'nak', 'apa', 'perlu', 'kalau', 'jadi', 'kami', 'dengan', 'saya', 'awak', 'anda', 'mereka', 'kita', 'adalah', 'adalah', 'atau', 'pada', 'sudah', 'telah', 'juga', 'buat', 'mana', 'jika', 'biasa', 'lagi', 'tadi', 'belum', 'nanti', 'ah', 'oh', 'ok', 'okay', 'lah', 'je', 'jer', 'pun'
-        ])
+        // Analytics (Restored & Robust)
+        const allConvos = await prisma.conversation.findMany({
+            where,
+            include: { messages: { where: { role: 'user' } } }
+        })
 
-        const wordCounts: Record<string, number> = {}
+        // 1. Source/Platform Distribution
+        const sourceMap: Record<string, { count: number, platform: string }> = {}
+        allConvos.forEach(c => {
+            // Use the specific URL (source) if available, otherwise use platform name
+            const displaySource = c.source || (c.platform || 'WEB').toUpperCase()
+            if (!sourceMap[displaySource]) {
+                sourceMap[displaySource] = { count: 0, platform: c.platform || 'WEB' }
+            }
+            sourceMap[displaySource].count++
+        })
+        const sources = Object.entries(sourceMap).map(([name, data]) => ({
+            platform: data.platform,
+            source: name,
+            count: data.count
+        }))
 
-        allUserMsgs.forEach(msg => {
-            const words = msg.content.toLowerCase()
-                .replace(/[^\w\s]/g, '')
-                .split(/\s+/)
+        // 2. Popular Keywords
+        const commonWords = new Set(['the', 'and', 'for', 'you', 'can', 'with', 'this', 'that', 'your', 'have', 'what', 'saya', 'yang', 'untuk', 'anda', 'dengan', 'saya', 'adalah', 'boleh', 'tidak', 'nama', 'nombor', 'tolong', 'terima', 'kasih', 'bagaimana', 'apa', 'mana', 'siapa'])
+        const wordMap: Record<string, number> = {}
 
-            words.forEach(word => {
-                // Filter by length (>2), base stopwords, and user-defined exclusions
-                if (word.length > 2 && !stopWords.has(word) && !userExclusions.includes(word)) {
-                    wordCounts[word] = (wordCounts[word] || 0) + 1
-                }
+        allConvos.forEach(convo => {
+            convo.messages.forEach(msg => {
+                const words = msg.content.toLowerCase()
+                    .replace(/[^\w\s-]|_/g, "")
+                    .split(/\s+/)
+
+                words.forEach(word => {
+                    if (word.length > 3 && !commonWords.has(word) && !userExclusions.includes(word)) {
+                        wordMap[word] = (wordMap[word] || 0) + 1
+                    }
+                })
             })
         })
 
-        const topWords = Object.entries(wordCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 20)
+        const topWords = Object.entries(wordMap)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
             .map(([text, value]) => ({ text, value }))
-
-        // 3. Platform & Source distribution
-        const allConvos = await (prisma.conversation as any).findMany({
-            select: { platform: true, source: true },
-            take: 1000
-        })
-
-        const sourceMap: Record<string, any> = {}
-        allConvos.forEach((c: any) => {
-            const key = `${c.platform}-${c.source || 'Unknown'}`
-            if (!sourceMap[key]) {
-                sourceMap[key] = { platform: c.platform, source: c.source || "Unknown", count: 0 }
-            }
-            sourceMap[key].count++
-        })
-
-        const sources = Object.values(sourceMap)
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 50)
 
         return NextResponse.json({
             conversations,
             pagination: {
                 total,
-                pages: Math.ceil(total / limit),
+                pages: Math.ceil(total / limit) || 1,
                 current: page
             },
             analytics: {
                 topWords,
                 sources
             },
-            excludedWords: userExclusions // Return this to UI so it knows what's already out
+            excludedWords: userExclusions
         })
-    } catch (error) {
+    } catch (error: any) {
         console.error("Conversations API Error:", error)
-        return NextResponse.json({ error: "Failed to fetch conversations" }, { status: 500 })
+        return NextResponse.json({ error: error.message || "Failed to fetch conversations" }, { status: 500 })
     }
 }
 

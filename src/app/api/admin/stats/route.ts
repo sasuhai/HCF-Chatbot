@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 
 export async function GET() {
     try {
-        const [totalChats, totalMessages, totalLeads, webChats, fbChats, recentActivity] = await Promise.all([
+        const [totalChats, totalMessages, totalLeads, webChats, fbChats, recentActivity, positiveFeedback, negativeFeedback] = await Promise.all([
             prisma.conversation.count(),
             prisma.message.count({ where: { role: "assistant" } }),
             prisma.lead.count(),
@@ -17,7 +17,9 @@ export async function GET() {
                         select: { platform: true }
                     }
                 }
-            })
+            }),
+            prisma.message.count({ where: { feedback: "like" } }),
+            prisma.message.count({ where: { feedback: "dislike" } })
         ])
 
         // Format activity to include platform
@@ -46,6 +48,8 @@ export async function GET() {
             totalLeads,
             webChats,
             fbChats,
+            positiveFeedback,
+            negativeFeedback,
             recentActivity: formattedActivity,
             aiUsage,
             runtime: {

@@ -29,6 +29,7 @@ export default function AdminKnowledgeBase() {
     const [documents, setDocuments] = useState<Document[]>([])
     const [isLoadingDocs, setIsLoadingDocs] = useState(true)
     const [isUploading, setIsUploading] = useState(false)
+    const [searchQuery, setSearchQuery] = useState("")
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const fetchDocuments = async () => {
@@ -140,6 +141,23 @@ export default function AdminKnowledgeBase() {
         }
     }
 
+    const filteredDocuments = documents.filter(doc => {
+        // 1. Filter by Tab
+        const matchesTab = activeTab === "all" ||
+            (activeTab === "documents" && doc.type !== "url" && doc.type !== "video") ||
+            (activeTab === "urls" && doc.type === "url") ||
+            (activeTab === "videos" && doc.type === "video");
+
+        if (!matchesTab) return false;
+
+        // 2. Filter by Search Query
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        return doc.title.toLowerCase().includes(query) ||
+            doc.content.toLowerCase().includes(query) ||
+            (doc.sourceUrl && doc.sourceUrl.toLowerCase().includes(query));
+    })
+
     return (
         <div className="space-y-6 max-w-6xl mx-auto">
             <div className="flex justify-between items-center">
@@ -239,12 +257,17 @@ export default function AdminKnowledgeBase() {
                         </div>
                         <div className="relative w-64">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
-                            <Input placeholder="Search documents..." className="pl-8 bg-white dark:bg-slate-950" />
+                            <Input
+                                placeholder="Search documents..."
+                                className="pl-8 bg-white dark:bg-slate-950"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Tabs defaultValue="all" className="w-full">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="mb-4">
                             <TabsTrigger value="all">All Sources</TabsTrigger>
                             <TabsTrigger value="documents">Files</TabsTrigger>
@@ -268,12 +291,12 @@ export default function AdminKnowledgeBase() {
                                         <TableRow>
                                             <TableCell colSpan={5} className="text-center py-6 text-slate-500">Loading documents...</TableCell>
                                         </TableRow>
-                                    ) : documents.length === 0 ? (
+                                    ) : filteredDocuments.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="text-center py-6 text-slate-500">No documents found. Add a URL above to start.</TableCell>
+                                            <TableCell colSpan={5} className="text-center py-6 text-slate-500">No matching documents found.</TableCell>
                                         </TableRow>
                                     ) : (
-                                        documents.map((doc) => (
+                                        filteredDocuments.map((doc) => (
                                             <TableRow key={doc.id}>
                                                 <TableCell className="font-medium">
                                                     <div className="flex items-center gap-2">
