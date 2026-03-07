@@ -29,13 +29,32 @@ export async function GET() {
             platform: msg.conversation.platform
         }))
 
+        // Fetch AI Usage Stats
+        const aiUsageSetting = await prisma.setting.findUnique({
+            where: { key: "ai_usage_stats" }
+        })
+        const aiUsage = aiUsageSetting ? JSON.parse(aiUsageSetting.value) : {
+            totalPromptTokens: 0,
+            totalCompletionTokens: 0,
+            totalTotalTokens: 0,
+            totalCost: 0
+        }
+
         return NextResponse.json({
             totalChats,
             totalMessages,
             totalLeads,
             webChats,
             fbChats,
-            recentActivity: formattedActivity
+            recentActivity: formattedActivity,
+            aiUsage,
+            runtime: {
+                version: process.version,
+                platform: process.platform,
+                memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB",
+                uptime: Math.round(process.uptime() / 60) + " mins",
+                env: process.env.NODE_ENV
+            }
         })
     } catch (error) {
         console.error("Stats API Error:", error)

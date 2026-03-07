@@ -49,9 +49,11 @@ cp -r .next/static/* deploy_cache/.next/static/ 2>/dev/null || true
 cp -r .next/static/* deploy_cache_public/_next/static/ 2>/dev/null || true
 cp -r public/* deploy_cache_public/ 2>/dev/null || true
 
-# Copy Prisma and Package info
+# Copy Prisma, Package info and .env
 cp -r prisma deploy_cache/ 2>/dev/null || true
 cp package.json deploy_cache/ 2>/dev/null || true
+cp .env deploy_cache/ 2>/dev/null || true
+cp server.js deploy_cache/ 2>/dev/null || true
 
 # Dummy out the 'lint' command so Hostinger's auto-installer doesn't fail
 sed -i '' 's/"lint": ".*"/"lint": "echo '\''Bundled Build Detected'\''"/' deploy_cache/package.json 2>/dev/null || sed -i 's/"lint": ".*"/"lint": "echo '\''Bundled Build Detected'\''"/' deploy_cache/package.json
@@ -71,24 +73,50 @@ rsync -avz --progress \
 # 4. Cleanup and GitHub Push
 echo "⏭️ Step 4: Skipping GitHub Push (using Direct Fast-Sync instead)"
 
-# 5. Connect the Proxy Bridge
-echo "🌉 Step 5: Setting up Hostinger Proxy Bridge..."
+# 5. Connect the Proxy Bridge & Force Restart
+echo "🌉 Step 5: Setting up Hostinger Proxy Bridge & Forcing Restart..."
 ssh -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} << EOF
-  # Create a clean .htaccess in public_html that points to the nodejs folder
+  # 1. Kill any existing Node processes to force a clean start
+  echo "💀 Killing existing Node processes..."
+  pkill -u ${REMOTE_USER} node || true
+  
+  # 2. Clear old Next.js server cache (common cause of 'stale' behavior)
+  echo "🧹 Clearing server cache..."
+  rm -rf ${APP_PATH}/.next/cache
+  
+  # 3. Create a clean .htaccess with cache-busting headers
+  echo "📝 Updating .htaccess..."
   cat > ${WEB_PATH}/.htaccess << 'HTACCESS'
+# --- HCF CHATBOT PASSENGER CONFIG ---
 PassengerAppRoot ${APP_PATH}
 PassengerAppType node
 PassengerNodejs /opt/alt/alt-nodejs22/root/bin/node
 PassengerStartupFile server.js
 PassengerBaseURI /
-PassengerRestartDir ${APP_PATH}/tmp
 RewriteEngine On
 RewriteRule ^\.builds - [F,L]
+
+# --- CACHE BUSTING & FORCE RELOAD ---
+<IfModule mod_headers.c>
+    # Force Litespeed to purge cache on next request
+    Header set X-LiteSpeed-Purge "*"
+    # Prevent browser from caching the main HTML entry points
+    <FilesMatch "\.(html|php|js|json)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires 0
+    </FilesMatch>
+</IfModule>
+
+# Deploy ID: $(date +%s)
 HTACCESS
 
-  # Trigger a Passenger restart
+  # 4. Trigger Passenger restart via restart.txt (Standard Method)
   mkdir -p ${APP_PATH}/tmp
+  rm -f ${APP_PATH}/tmp/restart.txt
   touch ${APP_PATH}/tmp/restart.txt
+  
+  echo "✅ Server-side restart signals sent."
 EOF
 
 rm -rf deploy_cache

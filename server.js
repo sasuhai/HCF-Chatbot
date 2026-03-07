@@ -1,10 +1,29 @@
 const { createServer } = require('http')
 const { parse } = require('url')
 const next = require('next')
+const { loadEnvConfig } = require('@next/env')
+
+// Load environment variables from .env file
+const projectDir = process.cwd()
+loadEnvConfig(projectDir)
+
+// Redirect stderr to stdout for visibility in Hostinger's "Runtime Logs" portal
+process.stderr.write = (function (write) {
+    return function (string, encoding, fd) {
+        process.stdout.write(string, encoding, fd)
+        write.apply(process.stderr, arguments)
+    }
+})(process.stderr.write)
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = '0.0.0.0'
 const port = parseInt(process.env.PORT || '3000', 10)
+
+console.log('--- STARTING HCF CHATBOT SERVER ---')
+console.log('Environment:', process.env.NODE_ENV || 'development')
+console.log('Port:', port)
+console.log('Database Configured:', !!process.env.DATABASE_URL)
+
 // when using middleware `hostname` and `port` must be provided below
 const app = next({ dev, hostname, port })
 const handle = app.getRequestHandler()

@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma"
 // @ts-ignore
 import pdf from "pdf-parse/lib/pdf-parse.js"
 import officeParser from "officeparser"
+import { logAiUsage } from "@/lib/ai-auditor"
+import { extractAndSaveLead } from "@/lib/lead-capture"
 
 // Initialize clients (these will fail if keys are missing)
 const pinecone = new Pinecone()
@@ -179,10 +181,19 @@ ${context}`
             messages: finalMessages,
             temperature: 0.2,
             onFinish: async (completion) => {
+                // Update message in DB
                 await prisma.message.update({
                     where: { id: assistantMessage.id },
                     data: { content: completion.text }
                 })
+                // Log AI Usage Cost
+                await logAiUsage("gpt-4o-mini", completion.usage)
+
+                // Background Lead Extraction from the current exchange
+                // We check both the prompt (last user msg) and context
+                if (currentConvId) {
+                    extractAndSaveLead(userQuery, currentConvId, "WEB").catch(console.error)
+                }
             }
         })
 

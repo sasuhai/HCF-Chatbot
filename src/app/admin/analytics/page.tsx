@@ -2,11 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { BarChart, Users, MessageSquare, MousePointer2, TrendingUp, Globe, Facebook, Loader2, Search, Trash2, Calendar, MessageCircle, ChevronRight, MessageCircleMore, Trash, Filter } from "lucide-react"
+import { BarChart, Users, MessageSquare, MousePointer2, TrendingUp, Globe, Facebook, Loader2, Search, Trash2, Calendar, MessageCircle, ChevronRight, MessageCircleMore, Trash, Filter, RefreshCw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 
 export default function AnalyticsPage() {
@@ -17,7 +20,22 @@ export default function AnalyticsPage() {
         totalLeads: 0,
         webChats: 0,
         fbChats: 0,
-        recentActivity: [] as any[]
+        recentActivity: [] as any[],
+        runtime: {
+            version: "",
+            platform: "",
+            memory: "",
+            uptime: "",
+            env: ""
+        },
+        aiUsage: {
+            totalPromptTokens: 0,
+            totalCompletionTokens: 0,
+            totalTotalTokens: 0,
+            totalCost: 0
+        },
+        popularQuestions: [] as { question: string, count: number }[],
+        questionsLastUpdated: null as string | null
     })
 
     const [convData, setConvData] = useState({
@@ -26,19 +44,57 @@ export default function AnalyticsPage() {
             topWords: [] as any[],
             sources: [] as any[]
         },
-        pagination: { total: 0, pages: 1, current: 1 }
+        pagination: { total: 0, pages: 1, current: 1 },
+        excludedWords: [] as string[]
     })
 
     const [search, setSearch] = useState("")
     const [isDeleting, setIsDeleting] = useState<string | null>(null)
+    const [purgeDays, setPurgeDays] = useState(30)
+
+    const [isRefreshingQuestions, setIsRefreshingQuestions] = useState(false)
+    const [leads, setLeads] = useState<any[]>([])
+    const [isLoadingLeads, setIsLoadingLeads] = useState(false)
 
     const fetchStats = async () => {
         try {
             const res = await fetch("/api/admin/stats")
             const data = await res.json()
-            setStats(data)
+
+            // Also fetch smart grouped questions
+            const qRes = await fetch("/api/admin/stats/questions")
+            const qData = await qRes.json()
+
+            if (data && !data.error) {
+                setStats(prev => ({
+                    ...prev,
+                    ...data,
+                    popularQuestions: qData.questions || [],
+                    questionsLastUpdated: qData.lastUpdated
+                }))
+            } else if (data.error) {
+                toast.error(data.error)
+            }
         } catch (error) {
             console.error("Failed to fetch statistics:", error)
+        }
+    }
+
+    const refreshQuestions = async () => {
+        setIsRefreshingQuestions(true)
+        try {
+            const res = await fetch("/api/admin/stats/questions?refresh=true")
+            const data = await res.json()
+            setStats(prev => ({
+                ...prev,
+                popularQuestions: data.questions || [],
+                questionsLastUpdated: data.lastUpdated
+            }))
+            toast.success("Questions analysis updated!")
+        } catch (error) {
+            toast.error("Failed to refresh analysis")
+        } finally {
+            setIsRefreshingQuestions(false)
         }
     }
 
@@ -57,14 +113,87 @@ export default function AnalyticsPage() {
         }
     }
 
+    const fetchLeads = async () => {
+        setIsLoadingLeads(true)
+        try {
+            const res = await fetch("/api/admin/leads")
+            const data = await res.json()
+            if (data.leads) setLeads(data.leads)
+        } catch (error) {
+            console.error("Leads fetch error:", error)
+        } finally {
+            setIsLoadingLeads(false)
+        }
+    }
+
+    const deleteLead = async (id: string) => {
+        if (!confirm("Remove this lead?")) return
+        try {
+            const res = await fetch(`/api/admin/leads?id=${id}`, { method: 'DELETE' })
+            if (res.ok) {
+                toast.success("Lead removed")
+                fetchLeads()
+                fetchStats()
+            }
+        } catch (error) {
+            toast.error("Failed to delete lead")
+        }
+    }
+
     useEffect(() => {
         const init = async () => {
             setIsLoading(true)
-            await Promise.all([fetchStats(), fetchConversations()])
+            await Promise.all([fetchStats(), fetchConversations(), fetchLeads()])
             setIsLoading(false)
         }
         init()
     }, [])
+
+    const handleExcludeWord = async (word: string) => {
+        try {
+            const res = await fetch("/api/admin/conversations", {
+                method: "POST",
+                body: JSON.stringify({ word, action: 'exclude' })
+            })
+            if (res.ok) {
+                toast.success('Keyword excluded')
+                fetchConversations(convData.pagination.current, search)
+            }
+        } catch (error) {
+            toast.error("Failed to exclude word")
+        }
+    }
+
+    const handleRestoreWord = async (word: string) => {
+        try {
+            const res = await fetch("/api/admin/conversations", {
+                method: "POST",
+                body: JSON.stringify({ word, action: 'include' })
+            })
+            if (res.ok) {
+                toast.success(`'${word}' restored to analysis`)
+                fetchConversations(convData.pagination.current, search)
+            }
+        } catch (error) {
+            toast.error("Failed to restore word")
+        }
+    }
+
+    const resetExcludedWords = async () => {
+        if (!confirm("Are you sure you want to restore all excluded keywords?")) return
+        try {
+            const res = await fetch("/api/admin/conversations", {
+                method: "POST",
+                body: JSON.stringify({ action: 'reset' })
+            })
+            if (res.ok) {
+                toast.success('All keywords restored')
+                fetchConversations(1, search)
+            }
+        } catch (error) {
+            toast.error("Failed to reset")
+        }
+    }
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault()
@@ -131,9 +260,10 @@ export default function AnalyticsPage() {
             </div>
 
             <Tabs defaultValue="overview" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-8">
-                    <TabsTrigger value="overview">Performance Overview</TabsTrigger>
-                    <TabsTrigger value="history">Chat History (Full)</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-4 mb-8">
+                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    <TabsTrigger value="leads">Captured Leads</TabsTrigger>
+                    <TabsTrigger value="history">Chat History</TabsTrigger>
                     <TabsTrigger value="insights">Deep Insights</TabsTrigger>
                 </TabsList>
 
@@ -207,24 +337,172 @@ export default function AnalyticsPage() {
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Popular Keywords</CardTitle>
-                                <CardDescription>Most frequently used words in user messages</CardDescription>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle>Popular Keywords</CardTitle>
+                                        <CardDescription>Most frequently used words in user messages</CardDescription>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={resetExcludedWords} className="text-[10px] h-7 text-slate-400 hover:text-rose-500">
+                                        <RefreshCw className="w-3 h-3 mr-1" /> Reset
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="flex flex-wrap gap-2">
                                     {convData?.analytics?.topWords?.map((word: any, i) => (
-                                        <div key={i} className="flex items-center bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                                            <span className="text-sm font-medium mr-2">{word.text}</span>
-                                            <Badge variant="secondary" className="text-[10px] h-5">{word.value}</Badge>
-                                        </div>
+                                        <button
+                                            key={i}
+                                            onClick={() => handleExcludeWord(word.text)}
+                                            title="Click to exclude this word"
+                                            className="flex items-center bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-rose-200 hover:bg-rose-50/30 transition-all group"
+                                        >
+                                            <span className="text-sm font-medium mr-2 group-hover:text-rose-500">{word.text}</span>
+                                            <Badge variant="secondary" className="text-[10px] h-5 group-hover:bg-rose-100 group-hover:text-rose-600">{word.value}</Badge>
+                                        </button>
                                     ))}
                                     {(convData?.analytics?.topWords?.length === 0) && (
                                         <p className="text-sm text-slate-500 italic">Not enough data to generate keywords yet.</p>
                                     )}
                                 </div>
+                                {convData.excludedWords?.length > 0 && (
+                                    <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                                                Restorable Exclusions <Badge variant="outline" className="h-4 px-1 text-[8px] border-slate-200">{convData.excludedWords.length}</Badge>
+                                            </h4>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {convData.excludedWords.map((word, i) => (
+                                                <div key={i} className="flex items-center bg-slate-50 dark:bg-slate-900/50 px-2.5 py-1.5 rounded-lg text-[11px] text-slate-500 border border-slate-100 dark:border-slate-800 transition-all hover:bg-white dark:hover:bg-slate-900 group">
+                                                    <span className="font-medium">{word}</span>
+                                                    <button
+                                                        onClick={() => handleRestoreWord(word)}
+                                                        className="ml-2 p-0.5 rounded-md hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+                                                        title="Restore to analysis"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="mt-3 text-[9px] text-slate-400 italic">
+                                            * These words were manually hidden. Click the (X) to bring them back.
+                                        </p>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </div>
+                </TabsContent>
+
+                {/* LEADS TAB */}
+                <TabsContent value="leads">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Captured Leads</CardTitle>
+                            <CardDescription>People who provided contact details during chat for follow-up.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="rounded-md border bg-white dark:bg-slate-950">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead>Contact Info</TableHead>
+                                            <TableHead>Source Context</TableHead>
+                                            <TableHead>Date</TableHead>
+                                            <TableHead className="text-right">Action</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {isLoadingLeads ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center py-8">
+                                                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-yellow-500" />
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : leads.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center py-8 text-slate-500 italic">
+                                                    No leads captured yet.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            leads.map((lead) => (
+                                                <TableRow key={lead.id}>
+                                                    <TableCell className="font-semibold">{lead.name || "Unknown"}</TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col gap-0.5">
+                                                            {lead.email && <span className="text-blue-600 dark:text-blue-400 text-xs">{lead.email}</span>}
+                                                            {lead.phone && <span className="text-xs font-medium">{lead.phone}</span>}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-slate-500">
+                                                        {lead.conversationId ? (
+                                                            <Dialog>
+                                                                <DialogTrigger asChild>
+                                                                    <button className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline flex items-center gap-1.5 transition-colors font-medium">
+                                                                        <MessageCircle className="w-3.5 h-3.5" />
+                                                                        {lead.source}
+                                                                        <ChevronRight className="w-3 h-3 opacity-50" />
+                                                                    </button>
+                                                                </DialogTrigger>
+                                                                <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+                                                                    <DialogHeader className="p-6 bg-gradient-to-r from-yellow-500 to-yellow-600 text-white shrink-0">
+                                                                        <div className="flex items-center gap-3 mb-1">
+                                                                            <Badge variant="outline" className="text-white border-white/40 bg-white/10 text-[10px] uppercase">{lead.source}</Badge>
+                                                                            <span className="text-[10px] text-yellow-100 opacity-80">{new Date(lead.createdAt).toLocaleString()}</span>
+                                                                        </div>
+                                                                        <DialogTitle className="text-xl">Lead Conversation Histroy</DialogTitle>
+                                                                        <DialogDescription className="text-yellow-50">
+                                                                            Reviewing chat context for {lead.name || "Unknown User"}
+                                                                        </DialogDescription>
+                                                                    </DialogHeader>
+                                                                    <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50 dark:bg-slate-900/50">
+                                                                        {lead.conversation?.messages?.map((m: any) => (
+                                                                            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                                                <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm ${m.role === 'user'
+                                                                                    ? 'bg-yellow-500 text-white rounded-tr-none shadow-sm'
+                                                                                    : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-700 shadow-sm'
+                                                                                    }`}>
+                                                                                    <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                        {(!lead.conversation?.messages || lead.conversation.messages.length === 0) && (
+                                                                            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                                                                <MessageCircleMore className="w-12 h-12 mb-4 opacity-20" />
+                                                                                <p className="italic">No messages found for this session.</p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="p-4 border-t bg-white dark:bg-slate-950 text-right">
+                                                                        <Button variant="outline" size="sm" onClick={() => (document.querySelector('[data-slot="dialog-close"]') as any)?.click()}>Close Transcript</Button>
+                                                                    </div>
+                                                                </DialogContent>
+                                                            </Dialog>
+                                                        ) : (
+                                                            <span className="flex items-center gap-1.5 opacity-60 italic">
+                                                                {lead.source} (no history)
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-slate-500">
+                                                        {new Date(lead.createdAt).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button onClick={() => deleteLead(lead.id)} variant="ghost" size="sm" className="text-rose-500">
+                                                            <Trash className="w-4 h-4" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* HISTORY TAB */}
@@ -312,53 +590,194 @@ export default function AnalyticsPage() {
                 </TabsContent>
 
                 {/* INSIGHTS TAB */}
-                <TabsContent value="insights">
-                    <div className="grid gap-6 md:grid-cols-2">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Detailed Sources & Rollouts</CardTitle>
-                                <CardDescription>Tracking every domain hosting the chatbot.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {convData?.analytics?.sources?.map((s: any, i: number) => (
-                                        <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
-                                            <div className="flex flex-col gap-0.5 max-w-[70%]">
-                                                <span className="text-[10px] uppercase font-bold text-slate-400">{s.platform}</span>
-                                                <span className="text-sm font-medium truncate">{s.source}</span>
+                <TabsContent value="insights" className="space-y-6">
+                    <div className="grid gap-6 md:grid-cols-3">
+                        {/* Popular Questions (Main Area) */}
+                        <div className="md:col-span-2">
+                            <Card className="h-full border-t-4 border-t-yellow-500 shadow-sm">
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                                <TrendingUp className="w-5 h-5 text-yellow-600" />
                                             </div>
-                                            <div className="text-right">
-                                                <Badge variant="secondary">{s.count} Chats</Badge>
+                                            <div>
+                                                <CardTitle>Popular Actual Questions</CardTitle>
+                                                <CardDescription>AI-compiled and grouped by semantic similarity.</CardDescription>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            disabled={isRefreshingQuestions}
+                                            onClick={refreshQuestions}
+                                            className="text-slate-400 hover:text-yellow-600 hover:bg-yellow-50"
+                                        >
+                                            <RefreshCw className={`w-4 h-4 ${isRefreshingQuestions ? 'animate-spin' : ''}`} />
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4">
+                                        {stats.popularQuestions?.length > 0 ? (
+                                            stats.popularQuestions.map((item: any, idx: number) => (
+                                                <div key={idx} className="flex items-center justify-between p-4 border rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all group">
+                                                    <div className="flex items-center gap-4 overflow-hidden">
+                                                        <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500 group-hover:bg-yellow-100 group-hover:text-yellow-600 transition-colors">
+                                                            {idx + 1}
+                                                        </div>
+                                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                                            "{item.question}"
+                                                        </span>
+                                                    </div>
+                                                    <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-none ml-4 shrink-0 px-3 py-1">
+                                                        {item.count} asks
+                                                    </Badge>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-center py-20 border-2 border-dashed rounded-2xl border-slate-100 dark:border-slate-800">
+                                                <MessageSquare className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                                                <p className="text-sm text-slate-500 italic">No questions compiled yet. Data appears after several user interactions.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="mt-6 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-dotted">
+                                        <p className="text-[10px] text-slate-400 italic">
+                                            * Semantic grouping via GPT-4o-mini
+                                        </p>
+                                        {stats.questionsLastUpdated && (
+                                            <span className="text-[10px] text-slate-400 font-medium">
+                                                Last Analyzed: {new Date(stats.questionsLastUpdated).toLocaleString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Sidebar (Server Status & Sources) */}
+                        <div className="md:col-span-1 space-y-6">
+                            <Card className="bg-slate-900 text-white border-none shadow-xl overflow-hidden">
+                                <CardHeader className="pb-2 border-b border-white/10">
+                                    <div className="flex items-center gap-2">
+                                        <Globe className="w-4 h-4 text-emerald-400" />
+                                        <CardTitle className="text-xs font-bold uppercase tracking-wider">Hostinger Runtime</CardTitle>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="pt-6 space-y-5">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] text-slate-500 uppercase font-bold">Node Version</span>
+                                            <div className="text-sm font-mono text-emerald-400">{stats.runtime?.version || "N/A"}</div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] text-slate-500 uppercase font-bold">Memory</span>
+                                            <div className="text-sm font-bold">{stats.runtime?.memory || "N/A"}</div>
+                                        </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-white/5 space-y-3">
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <span className="text-slate-500 uppercase font-bold">Uptime</span>
+                                            <span className="text-slate-300 font-medium">{stats.runtime?.uptime || "N/A"}</span>
+                                        </div>
+                                        <Badge className={`${stats.runtime?.env === 'production' ? 'bg-emerald-500' : 'bg-amber-500'} w-full justify-center border-none text-[10px] py-1`}>
+                                            {stats.runtime?.env?.toUpperCase() || "DEVELOPMENT"}
+                                        </Badge>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-blue-100 bg-blue-50/10 shadow-sm overflow-hidden">
+                                <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-xs font-bold uppercase tracking-wider text-blue-600">AI Resource Monitoring</CardTitle>
+                                        <div className="p-1 bg-blue-100 rounded">
+                                            <TrendingUp className="w-3 h-3 text-blue-600" />
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <div className="flex justify-between items-end">
+                                        <div className="space-y-0.5">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase">Accumulated Cost</span>
+                                            <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                                                ${(stats.aiUsage?.totalCost || 0).toFixed(4)}
+                                            </div>
+                                        </div>
+                                        <Badge variant="outline" className="text-[9px] bg-white border-blue-100 text-blue-600">USD</Badge>
+                                    </div>
+                                    <div className="pt-3 border-t border-blue-100/50 grid grid-cols-2 gap-4">
+                                        <div className="space-y-0.5">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase">Input Tokens</span>
+                                            <div className="text-xs font-medium font-mono">{((stats.aiUsage?.totalPromptTokens || 0) / 1000).toFixed(1)}k</div>
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase">Output Tokens</span>
+                                            <div className="text-xs font-medium font-mono">{((stats.aiUsage?.totalCompletionTokens || 0) / 1000).toFixed(1)}k</div>
+                                        </div>
+                                    </div>
+                                    <p className="text-[8px] text-slate-400 italic text-center pt-1">
+                                        Estimated based on gpt-4o-mini pricing.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="shadow-sm">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm flex items-center gap-2">
+                                        <BarChart className="w-4 h-4 text-slate-400" /> Distribution
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    {convData?.analytics?.sources?.slice(0, 3).map((s: any, i: number) => (
+                                        <div key={i} className="flex flex-col gap-1">
+                                            <div className="flex justify-between text-[10px]">
+                                                <span className="font-bold truncate max-w-[70%]">{s.source}</span>
+                                                <span className="text-slate-500 font-mono">{s.count}</span>
+                                            </div>
+                                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div className="h-full bg-blue-500" style={{ width: `${(s.count / (stats.totalChats || 1)) * 100}%` }} />
                                             </div>
                                         </div>
                                     ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Data Management & Maintenance</CardTitle>
-                                <CardDescription>Tools for house-keeping and privacy.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="p-4 bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-900/50 rounded-xl">
-                                    <h4 className="font-semibold text-rose-700 dark:text-rose-400 text-sm mb-2 flex items-center">
-                                        <Trash2 className="w-4 h-4 mr-2" /> Immediate Purge
-                                    </h4>
-                                    <p className="text-xs text-rose-600 dark:text-rose-500 mb-4 leading-relaxed">
-                                        Deleting old records improves dashboard performance and ensures you only store relevant user data.
-                                    </p>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <Button onClick={() => handleMaintenance(7)} variant="outline" size="sm" className="h-9 text-[10px] font-bold border-rose-200">DELETE OOLDER THAN 7 DAYS</Button>
-                                        <Button onClick={() => handleMaintenance(90)} variant="outline" size="sm" className="h-9 text-[10px] font-bold border-rose-200">DELETE OLDER THAN 90 DAYS</Button>
+                            <Card className="border-rose-100 bg-rose-50/10 shadow-sm">
+                                <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-sm text-rose-600">Maintenance</CardTitle>
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-300" />
                                     </div>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-xs text-slate-500 italic">"Total current records: {stats.totalChats} chats, {stats.totalMessages} messages"</p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[10px] uppercase font-bold text-slate-400">Retention (Days)</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                type="number"
+                                                min={30}
+                                                value={purgeDays}
+                                                onChange={(e) => setPurgeDays(Math.max(30, parseInt(e.target.value) || 30))}
+                                                className="h-8 text-xs bg-white dark:bg-slate-950 border-rose-100"
+                                            />
+                                            <Badge variant="outline" className="text-[10px] text-slate-500 whitespace-nowrap">Min: 30d</Badge>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        onClick={() => handleMaintenance(purgeDays)}
+                                        variant="outline"
+                                        className="w-full text-rose-500 text-[10px] h-9 border-rose-200 hover:bg-rose-50 font-bold uppercase shadow-sm"
+                                    >
+                                        Purge older than {purgeDays} days
+                                    </Button>
+                                    <p className="text-[9px] text-slate-400 text-center italic">
+                                        * This deletes all chat records older than {purgeDays} days.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
                 </TabsContent>
             </Tabs>

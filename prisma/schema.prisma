@@ -28,6 +28,7 @@ model Conversation {
   updatedAt DateTime  @updatedAt
   source    String?   @db.Text
   messages  Message[]
+  leads     Lead[]
 }
 
 model Message {
@@ -47,12 +48,16 @@ model Message {
 }
 
 model Lead {
-  id        String   @id @default(cuid())
-  name      String?
-  email     String?
-  phone     String?
-  source    String
-  createdAt DateTime @default(now())
+  id             String        @id @default(cuid())
+  name           String?
+  email          String?
+  phone          String?
+  source         String
+  conversationId String?
+  createdAt      DateTime      @default(now())
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId], map: "Lead_conversationId_fkey")
 }
 
 model Setting {
