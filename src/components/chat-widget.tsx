@@ -356,10 +356,23 @@ export function ChatWidget() {
                                                 )}
 
                                                 <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-900 prose-pre:text-white max-w-none">
-                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                    <ReactMarkdown
+                                                        remarkPlugins={[remarkGfm]}
+                                                        components={{
+                                                            a: ({ node, ...props }) => (
+                                                                <a
+                                                                    {...props}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="chatbot-link"
+                                                                />
+                                                            ),
+                                                        }}
+                                                    >
                                                         {msg.content}
                                                     </ReactMarkdown>
                                                 </div>
+
 
                                                 {/* Actions (Like/Dislike/Reply) */}
                                                 <div className={`absolute -bottom-8 ${msg.role === "user" ? "right-1" : "left-1"} flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 z-20`}>

@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { BarChart, Users, MessageSquare, MousePointer2, TrendingUp, Globe, Facebook, Loader2, Search, Trash2, Calendar, MessageCircle, ChevronRight, MessageCircleMore, Trash, Filter, RefreshCw, X, ThumbsUp, ThumbsDown } from "lucide-react"
+import { BarChart, Users, MessageSquare, MousePointer2, TrendingUp, Globe, Facebook, Loader2, Search, Trash2, Calendar, MessageCircle, ChevronRight, MessageCircleMore, Trash, Filter, RefreshCw, X, ThumbsUp, ThumbsDown, Wand2, PenTool, CheckCircle, Settings } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import ReactMarkdown from 'react-markdown'
@@ -30,13 +31,16 @@ export default function AnalyticsPage() {
             platform: "",
             memory: "",
             uptime: "",
-            env: ""
+            env: "",
+            deployedAt: "" as string | Date
         },
         aiUsage: {
             totalPromptTokens: 0,
             totalCompletionTokens: 0,
             totalTotalTokens: 0,
-            totalCost: 0
+            totalCost: 0,
+            monthlyBudget: 5,
+            creditBalance: 0
         },
         popularQuestions: [] as { question: string, count: number }[],
         questionsLastUpdated: null as string | null
@@ -60,6 +64,11 @@ export default function AnalyticsPage() {
     const [isRefreshingQuestions, setIsRefreshingQuestions] = useState(false)
     const [leads, setLeads] = useState<any[]>([])
     const [isLoadingLeads, setIsLoadingLeads] = useState(false)
+
+    // Correction state
+    const [correctingMessage, setCorrectingMessage] = useState<any>(null)
+    const [correctionAnswer, setCorrectionAnswer] = useState("")
+    const [isSavingCorrection, setIsSavingCorrection] = useState(false)
 
     const fetchStats = async () => {
         try {
@@ -238,6 +247,58 @@ export default function AnalyticsPage() {
             toast.error("Maintenance failed")
         }
     }
+
+    const handleSaveCorrection = async () => {
+        if (!correctionAnswer.trim()) return
+        setIsSavingCorrection(true)
+        try {
+            // Find the user question that preceded this assistant message
+            const convo = convData.conversations.find(c => c.messages.some((m: any) => m.id === correctingMessage.id))
+            const msgIdx = convo.messages.findIndex((m: any) => m.id === correctingMessage.id)
+            const question = convo.messages[msgIdx - 1]?.content || "Unknown Question"
+
+            const res = await fetch("/api/admin/corrections", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messageId: correctingMessage.id,
+                    question,
+                    answer: correctionAnswer
+                })
+            })
+            const data = await res.json()
+            if (res.ok) {
+                toast.success("Correction saved! AI knowledge updated.")
+                if (data.warning) toast.warning(data.warning)
+                setCorrectingMessage(null)
+                setCorrectionAnswer("")
+                fetchConversations(convData.pagination.current, search)
+            } else {
+                toast.error(data.error || "Failed to save correction")
+            }
+        } catch (error) {
+            toast.error("An error occurred")
+        } finally {
+            setIsSavingCorrection(false)
+        }
+    }
+
+    const updateAiConfig = async (payload: any) => {
+        try {
+            const res = await fetch("/api/admin/stats", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            if (res.ok) {
+                toast.success("AI Resources updated")
+                fetchStats()
+            }
+        } catch (error) {
+            toast.error("Failed to update AI config")
+        }
+    }
+
 
     if (isLoading) {
         return (
@@ -641,10 +702,23 @@ export default function AnalyticsPage() {
                                                                     : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-700'
                                                         }`}>
                                                         <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed max-w-none">
-                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                            <ReactMarkdown
+                                                                remarkPlugins={[remarkGfm]}
+                                                                components={{
+                                                                    a: ({ node, ...props }) => (
+                                                                        <a
+                                                                            {...props}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="chatbot-link"
+                                                                        />
+                                                                    ),
+                                                                }}
+                                                            >
                                                                 {m.content}
                                                             </ReactMarkdown>
                                                         </div>
+
                                                         {m.feedback && (
                                                             <div className={`absolute -top-2 -right-2 bg-white dark:bg-slate-800 rounded-full p-1.5 border shadow-md z-10`}>
                                                                 {m.feedback === 'like' ? (
@@ -652,6 +726,23 @@ export default function AnalyticsPage() {
                                                                 ) : (
                                                                     <ThumbsDown className="w-4 h-4 text-amber-600 fill-amber-100 dark:fill-amber-900" />
                                                                 )}
+                                                            </div>
+                                                        )}
+
+                                                        {m.role === 'assistant' && (
+                                                            <div className={`flex justify-end gap-1 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 ${m.notAnswered ? 'border-rose-200' : ''}`}>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="xs"
+                                                                    onClick={() => {
+                                                                        setCorrectingMessage(m)
+                                                                        setCorrectionAnswer(m.content)
+                                                                    }}
+                                                                    className={`h-7 text-[10px] ${m.notAnswered ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-yellow-600 hover:bg-yellow-50'}`}
+                                                                >
+                                                                    <Wand2 className="w-3 h-3 mr-1" />
+                                                                    {m.notAnswered ? "Provide Answer" : "Improve Answer"}
+                                                                </Button>
                                                             </div>
                                                         )}
                                                     </div>
@@ -779,6 +870,12 @@ export default function AnalyticsPage() {
                                             <span className="text-slate-500 uppercase font-bold">Uptime</span>
                                             <span className="text-slate-300 font-medium">{stats.runtime?.uptime || "N/A"}</span>
                                         </div>
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <span className="text-slate-500 uppercase font-bold">Last Build</span>
+                                            <span className="text-slate-300 font-medium">
+                                                {stats.runtime?.deployedAt ? new Date(stats.runtime.deployedAt).toLocaleString() : "N/A"}
+                                            </span>
+                                        </div>
                                         <Badge className={`${stats.runtime?.env === 'production' ? 'bg-emerald-500' : 'bg-amber-500'} w-full justify-center border-none text-[10px] py-1`}>
                                             {stats.runtime?.env?.toUpperCase() || "DEVELOPMENT"}
                                         </Badge>
@@ -786,38 +883,113 @@ export default function AnalyticsPage() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="border-blue-100 bg-blue-50/10 shadow-sm overflow-hidden">
-                                <CardHeader className="pb-2">
+                            <Card className="border-blue-100 bg-blue-50/10 shadow-lg overflow-hidden relative group">
+                                <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Dialog>
+                                        <DialogTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-400 hover:text-blue-600">
+                                                <Settings className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="sm:max-w-xs">
+                                            <DialogHeader>
+                                                <DialogTitle className="text-sm">Manage Billing Data</DialogTitle>
+                                                <DialogDescription className="text-[10px]">As AI usage balance is not available via API, please update manually from platform.openai.com/usage</DialogDescription>
+                                            </DialogHeader>
+                                            <div className="space-y-4 py-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="budget" className="text-[10px]">Monthly Budget ($)</Label>
+                                                    <Input
+                                                        id="budget"
+                                                        type="number"
+                                                        defaultValue={stats.aiUsage?.monthlyBudget || 5}
+                                                        onBlur={(e) => updateAiConfig({ budget: e.target.value })}
+                                                        className="h-8 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="balance" className="text-[10px]">Manual Top-up ($)</Label>
+                                                    <Input
+                                                        id="balance"
+                                                        type="number"
+                                                        defaultValue={stats.aiUsage?.creditBalance || 0}
+                                                        onBlur={(e) => updateAiConfig({ balance: e.target.value })}
+                                                        className="h-8 text-xs"
+                                                    />
+                                                </div>
+                                                <Button size="xs" variant="outline" onClick={() => confirm("Reset all usage counters?") && updateAiConfig({ reset: true })} className="w-full text-rose-500 text-[10px]">
+                                                    Reset All Usage Counters
+                                                </Button>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+                                <CardHeader className="pb-3 px-4">
                                     <div className="flex items-center justify-between">
-                                        <CardTitle className="text-xs font-bold uppercase tracking-wider text-blue-600">AI Resource Monitoring</CardTitle>
-                                        <div className="p-1 bg-blue-100 rounded">
-                                            <TrendingUp className="w-3 h-3 text-blue-600" />
+                                        <div className="flex gap-2 items-center">
+                                            <div className="p-1.5 bg-blue-500 rounded-lg">
+                                                <TrendingUp className="w-4 h-4 text-white" />
+                                            </div>
+                                            <CardTitle className="text-xs font-black uppercase tracking-widest text-blue-700">AI Resource Monitoring</CardTitle>
                                         </div>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="flex justify-between items-end">
-                                        <div className="space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase">Accumulated Cost</span>
-                                            <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                                                ${(stats.aiUsage?.totalCost || 0).toFixed(4)}
+                                <CardContent className="space-y-6 px-5 pb-6">
+                                    {/* Monthly Spending Progress (Like OpenAI) */}
+                                    <div className="space-y-2.5">
+                                        <div className="flex justify-between items-end">
+                                            <div className="space-y-1">
+                                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Current Month spending</span>
+                                                <div className="text-2xl font-black text-slate-900 dark:text-white flex items-baseline gap-1">
+                                                    ${(stats.aiUsage?.totalCost || 0).toFixed(2)}
+                                                    <span className="text-xs text-slate-400 font-normal">/ ${(stats.aiUsage?.monthlyBudget || 5).toFixed(0)}</span>
+                                                </div>
+                                            </div>
+                                            {(stats.aiUsage?.creditBalance > 0) && (
+                                                <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-[9px] px-2 border-none">
+                                                    Balance: ${stats.aiUsage.creditBalance.toFixed(2)}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="h-2 bg-slate-200/50 dark:bg-white/5 rounded-full overflow-hidden border border-slate-100 dark:border-white/10 p-[1px]">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-1000 ${(stats.aiUsage?.totalCost || 0) / (stats.aiUsage?.monthlyBudget || 5) > 0.8 ? 'bg-amber-500' : 'bg-emerald-500'
+                                                    }`}
+                                                style={{ width: `${Math.min(100, ((stats.aiUsage?.totalCost || 0) / (stats.aiUsage?.monthlyBudget || 5)) * 100)}%` }}
+                                            />
+                                        </div>
+                                        <p className="text-[9px] text-slate-400 italic">
+                                            Calculated based on real completion usage logs.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 py-4 border-y border-blue-100/30">
+                                        <div className="space-y-1">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase block">Total Tokens</span>
+                                            <div className="text-sm font-black font-mono">{(stats.aiUsage?.totalTotalTokens || 0).toLocaleString()}</div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase block">Total Requests</span>
+                                            <div className="text-sm font-black font-mono text-blue-600">{stats.totalMessages || 0}</div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase block">Avg. Tokens / Req</span>
+                                            <div className="text-sm font-black font-mono text-emerald-600">
+                                                {Math.round((stats.aiUsage?.totalTotalTokens || 0) / (stats.totalMessages || 1)).toLocaleString()}
                                             </div>
                                         </div>
-                                        <Badge variant="outline" className="text-[9px] bg-white border-blue-100 text-blue-600">USD</Badge>
-                                    </div>
-                                    <div className="pt-3 border-t border-blue-100/50 grid grid-cols-2 gap-4">
-                                        <div className="space-y-0.5">
-                                            <span className="text-[9px] text-slate-400 font-bold uppercase">Input Tokens</span>
-                                            <div className="text-xs font-medium font-mono">{((stats.aiUsage?.totalPromptTokens || 0) / 1000).toFixed(1)}k</div>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <span className="text-[9px] text-slate-400 font-bold uppercase">Output Tokens</span>
-                                            <div className="text-xs font-medium font-mono">{((stats.aiUsage?.totalCompletionTokens || 0) / 1000).toFixed(1)}k</div>
+                                        <div className="space-y-1">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase block">In/Out Ratio</span>
+                                            <div className="text-sm font-black font-mono text-slate-500">
+                                                {((stats.aiUsage?.totalPromptTokens || 1) / (stats.aiUsage?.totalCompletionTokens || 1)).toFixed(1)}:1
+                                            </div>
                                         </div>
                                     </div>
-                                    <p className="text-[8px] text-slate-400 italic text-center pt-1">
-                                        Estimated based on gpt-4o-mini pricing.
-                                    </p>
+
+                                    <div className="flex items-center gap-2 grayscale opacity-50 justify-center">
+                                        <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" className="w-3 h-3" alt="openai" />
+                                        <span className="text-[9px] font-bold uppercase tracking-widest">Powered by GPT-4o-mini</span>
+                                    </div>
                                 </CardContent>
                             </Card>
 
@@ -879,6 +1051,62 @@ export default function AnalyticsPage() {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            {/* Correction Dialog */}
+            <Dialog open={!!correctingMessage} onOpenChange={(open) => !open && setCorrectingMessage(null)}>
+                <DialogContent className="max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <PenTool className="w-5 h-5 text-yellow-500" />
+                            {correctingMessage?.notAnswered ? "Provide Correct Answer" : "Improve AI Response"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Your correction will update this chat history AND become part of the AI's permanent knowledge base.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] uppercase font-bold text-slate-500">User's Question</Label>
+                            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm italic border border-slate-100 dark:border-slate-800">
+                                {correctingMessage && (
+                                    convData.conversations.find(c => c.messages.some((m: any) => m.id === correctingMessage.id))
+                                        ?.messages[
+                                        convData.conversations.find(c => c.messages.some((m: any) => m.id === correctingMessage.id))
+                                            ?.messages.findIndex((m: any) => m.id === correctingMessage.id) - 1
+                                    ]?.content
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="correction" className="text-[10px] uppercase font-bold text-slate-500">Correct Response</Label>
+                            <Textarea
+                                id="correction"
+                                value={correctionAnswer}
+                                onChange={(e) => setCorrectionAnswer(e.target.value)}
+                                placeholder="Type the perfect answer here..."
+                                className="min-h-[150px] leading-relaxed"
+                            />
+                            <p className="text-[10px] text-slate-400 italic">
+                                Tip: Use professional yet friendly language. Include links using Markdown if needed.
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCorrectingMessage(null)}>Cancel</Button>
+                        <Button
+                            onClick={handleSaveCorrection}
+                            disabled={isSavingCorrection || !correctionAnswer.trim()}
+                            className="bg-yellow-500 hover:bg-yellow-600 gap-2"
+                        >
+                            {isSavingCorrection ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                            Update History & AI Knowledge
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

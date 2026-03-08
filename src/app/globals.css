@@ -120,7 +120,35 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Chatbot links styling - with !important to override .prose defaults */
+.chatbot-link {
+  color: #d97706 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 4px !important;
+  text-decoration-thickness: 1px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  padding: 0 2px !important;
+}
+
+.chatbot-link:hover {
+  color: #b45309 !important;
+  text-decoration-thickness: 2px !important;
+  background-color: rgba(251, 191, 36, 0.15) !important;
+  border-radius: 4px !important;
+}
+
+.dark .chatbot-link {
+  color: #f59e0b !important;
+}
+
+.dark .chatbot-link:hover {
+  color: #fbbf24 !important;
+  background-color: rgba(245, 158, 11, 0.2) !important;
 }

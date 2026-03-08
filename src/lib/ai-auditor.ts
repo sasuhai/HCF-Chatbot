@@ -29,11 +29,14 @@ export async function logAiUsage(model: string, usage: TokenUsage) {
             totalCompletionTokens: 0,
             totalTotalTokens: 0,
             totalCost: 0,
+            monthlyBudget: 5.00, // Default $5 budget
+            creditBalance: 0,    // User can manually set this
             lastUpdated: new Date()
         }
 
         if (setting) {
-            stats = JSON.parse(setting.value)
+            const savedStats = JSON.parse(setting.value)
+            stats = { ...stats, ...savedStats }
         }
 
         // Update stats
@@ -42,6 +45,11 @@ export async function logAiUsage(model: string, usage: TokenUsage) {
         stats.totalTotalTokens += usage.totalTokens
         stats.totalCost += cost
         stats.lastUpdated = new Date()
+
+        // Deduct from balance if balance exists
+        if (stats.creditBalance > 0) {
+            stats.creditBalance = Math.max(0, stats.creditBalance - cost)
+        }
 
         // Save back
         await prisma.setting.upsert({
