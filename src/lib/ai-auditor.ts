@@ -2,19 +2,26 @@ import { prisma } from "./prisma"
 
 export type TokenUsage = any;
 
-// Pricing for gpt-4o-mini (as of April 2024 approx)
-// Input: $0.150 / 1M tokens
-// Output: $0.600 / 1M tokens
+// Pricing for OpenAI Models (approx)
+// GPT-4o-mini: Input $0.15 / 1M, Output $0.60 / 1M
+// GPT-4.1-mini: Input $0.40 / 1M, Output $1.60 / 1M
 const PRICING = {
     "gpt-4o-mini": {
         input: 0.15 / 1000000,
         output: 0.60 / 1000000
+    },
+    "gpt-4.1-mini": {
+        input: 0.40 / 1000000,
+        output: 1.60 / 1000000
     }
 }
 
 export async function logAiUsage(model: string, usage: TokenUsage) {
     try {
-        const modelKey = model.includes("gpt-4o-mini") ? "gpt-4o-mini" : "default"
+        let modelKey = "default"
+        if (model.includes("gpt-4.1-mini")) modelKey = "gpt-4.1-mini"
+        else if (model.includes("gpt-4o-mini")) modelKey = "gpt-4o-mini"
+        
         const pricing = PRICING[modelKey as keyof typeof PRICING] || { input: 0, output: 0 }
 
         const cost = (usage.promptTokens * pricing.input) + (usage.completionTokens * pricing.output)

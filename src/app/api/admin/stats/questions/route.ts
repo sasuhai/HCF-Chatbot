@@ -59,13 +59,13 @@ export async function GET(req: Request) {
 
         // 3. Generate with temperature 0 for stability
         const { text, usage } = await generateText({
-            model: openai("gpt-4o-mini"),
+            model: openai("gpt-4.1-mini"),
             prompt: prompt,
             temperature: 0
         })
 
         // Log Usage
-        await logAiUsage("gpt-4o-mini", usage)
+        await logAiUsage("gpt-4.1-mini", usage)
 
         let questions = []
         try {

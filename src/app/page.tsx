@@ -144,7 +144,7 @@ export default function Home() {
               <Cpu className="w-10 h-10 text-slate-400 group-hover:text-yellow-500 mb-6 transition-colors" />
               <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3 italic">AI Core</h3>
               <p className="text-sm text-slate-500 leading-relaxed italic">
-                Dikuasakan oleh **OpenAI GPT-4o-mini**, dioptimumkan untuk respons pantas dan ketepatan tinggi dalam konteks agama.
+                Dikuasakan oleh **OpenAI GPT-4.1-mini**, dioptimumkan untuk respons pantas dan ketepatan tinggi dalam konteks agama.
               </p>
             </div>
             <div className="p-8 rounded-3xl bg-slate-100 dark:bg-slate-900 border border-transparent hover:border-yellow-500/30 transition-all group">

@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
                 // Use GPT-4o-mini Vision to describe the image and extract text
                 const base64Image = buffer.toString("base64")
                 const response = await openai.chat.completions.create({
-                    model: "gpt-4o-mini",
+                    model: "gpt-4.1-mini",
                     messages: [
                         {
                             role: "user",

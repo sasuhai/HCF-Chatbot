@@ -833,7 +833,7 @@ export default function AnalyticsPage() {
                                     </div>
                                     <div className="mt-6 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-dotted">
                                         <p className="text-[10px] text-slate-400 italic">
-                                            * Semantic grouping via GPT-4o-mini
+                                            * Semantic grouping via GPT-4.1-mini
                                         </p>
                                         {stats.questionsLastUpdated && (
                                             <span className="text-[10px] text-slate-400 font-medium">
@@ -988,7 +988,7 @@ export default function AnalyticsPage() {
 
                                     <div className="flex items-center gap-2 grayscale opacity-50 justify-center">
                                         <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" className="w-3 h-3" alt="openai" />
-                                        <span className="text-[9px] font-bold uppercase tracking-widest">Powered by GPT-4o-mini</span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest">Powered by GPT-4.1-mini</span>
                                     </div>
                                 </CardContent>
                             </Card>

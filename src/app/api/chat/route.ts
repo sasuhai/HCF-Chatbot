@@ -176,7 +176,7 @@ ${context}`
 
         // 7. Respond with Stream
         const result = streamText({
-            model: openai("gpt-4o-mini"),
+            model: openai("gpt-4.1-mini"),
             system: finalPrompt,
             messages: finalMessages,
             temperature: 0.2,
@@ -195,7 +195,7 @@ ${context}`
                         }
                     })
                     // Log AI Usage Cost
-                    await logAiUsage("gpt-4o-mini", completion.usage)
+                    await logAiUsage("gpt-4.1-mini", completion.usage)
 
                     // Background Lead Extraction from the current exchange
                     if (currentConvId) {
